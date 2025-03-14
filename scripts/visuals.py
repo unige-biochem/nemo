@@ -721,7 +721,7 @@ def view_verts(verts, colors="white", opacity=1.0, shading="none", point_size=2,
 
 
 def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="opaque",
-                       shading="none", opacity=0.2, use_orig_color=False):
+                       shading="none", opacity=0.2, use_orig_color=True):
     print(">> Rendering colored vertices...")
     viewer = napari.Viewer()
     if img is not None:
