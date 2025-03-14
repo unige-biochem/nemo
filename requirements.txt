@@ -1,0 +1,12 @@
+numpy
+matplotlib
+tifffile
+scipy
+scikit-image
+orientationpy
+napari
+pandas
+trimesh
+scikit-learn
+imageio
+pyvista
