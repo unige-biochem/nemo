@@ -175,7 +175,7 @@ def point_defect_2d_charge_multiple(l, n, defects):
     x = np.linspace(-l, l, n)
     y = np.linspace(-l, l, n)
     X, Y = np.meshgrid(x, y)
-    Theta_total = np.zeros((len(defects), *X.shape))
+    Theta_total = np.zeros(X.shape)
 
     for i, defect in enumerate(defects):
         x_d, y_d, charge = defect
@@ -183,10 +183,7 @@ def point_defect_2d_charge_multiple(l, n, defects):
         dy = Y - y_d
         Theta = np.arctan2(dy, dx)
         m = float(charge)
-        Theta_total[i] = m * Theta
-
-    Theta_total = np.average(np.cos(2 * Theta_total), axis=0)
-    Theta_total = np.arccos(Theta_total)
+        Theta_total += m * Theta
     U = np.cos(Theta_total)
     V = np.sin(Theta_total)
     magnitude = np.sqrt(U ** 2 + V ** 2)
