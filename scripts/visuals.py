@@ -562,7 +562,7 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, vescale=50, titl
     plt.show()
 
 
-def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize=(6, 6), savefig="", dpi=300, bins=30):
+def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize=(6, 6), savefig="", dpi=200, bins=30):
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=figsize)
     counts, bin_edges = np.histogram(angles_deg, bins=bins, range=(-90, 90), density=True)
     bin_centers_rad = np.radians((bin_edges[:-1] + bin_edges[1:]) / 2)

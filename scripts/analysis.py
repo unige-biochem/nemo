@@ -166,7 +166,7 @@ def expand_3d_array(array, num):
 ############################
 # IMAGE PROCESSING MODULES #
 ############################
-def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, zscal_overwite=None, img_unit="um"):
+def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_scaling=None, img_unit="um"):
     print(f">> Importing image {path}...")
     img_raw = imread(path)
     img_dim = img_raw.shape
@@ -206,6 +206,11 @@ def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, zscal_ove
         img_scale = (zscale, yscale, xscale)
         print(f"Found image scale = {img_scale} !")
 
+    # ======== Overwrite scaling if not found ========
+    if custom_scaling is not None:
+        print(f">> Overwriting scaling with {custom_scaling}...")
+        img_scale = custom_scaling
+
     # ======== Reduce resolution if needed by averaging ========
     if reduce_z > 1 or reduce_xy > 1:
         if reduce_xy > 1:
@@ -237,9 +242,6 @@ def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, zscal_ove
             img_scale = (reduce_z * img_scale[0], img_scale[1], img_scale[2])
         img_dim = img_raw.shape
         print(f"Reduced shape = {img_dim} | scale = {img_scale} | size = {round(img_raw.nbytes / 1e6, 2)} MB !")
-    if zscal_overwite is not None:
-        print(f">> Overwriting z-scale with {zscal_overwite}...")
-        img_scale = (zscal_overwite, img_scale[1], img_scale[2])
 
     # ======== Norm values if needed ========
     if norm_vals:
