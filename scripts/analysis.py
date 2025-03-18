@@ -661,7 +661,7 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, show_proj=False,
               figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig=""):
     print(f">> Projecting {mode} image intensities on verts using {interp_method} interpolation method...")
-    print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}{unit}")
+    print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}")
     verts, normals = mesh.vertices, mesh.vertex_normals
     distances = np.linspace(min_dist, max_dist, num_dist)
     distances_reshaped = distances.reshape(1, num_dist, 1)
@@ -938,7 +938,7 @@ def patch_surface_integral(mesh, value, patch_idxs, debug=False):
     return patch_integrals
 
 
-def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=3):
+def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
     boundary_indeces = []
     for i in range(patch_idxs.shape[0]):
         patch_vertices = mesh.vertices[patch_idxs[i]]
@@ -993,6 +993,7 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                                                   angle_precision=loop_angle_precision)
     calc_charge_loop_idxs_corrected = []
     calc_charge_loop_idxs_corrected_idxs = []
+    empty_loop_present = False
     for loop in calc_charge_loop_idxs:
         correct_loop = []
         correct_loop_idxs = []
@@ -1004,9 +1005,13 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                 correct_loop_idxs.append(loop_pos_idx)
             except:
                 pass
+        if len(correct_loop) == 0:
+            empty_loop_present = True
         correct_loop = np.array(correct_loop)
         calc_charge_loop_idxs_corrected.append(correct_loop)
         calc_charge_loop_idxs_corrected_idxs.append(np.array(correct_loop_idxs))
+    if empty_loop_present:
+        print("Problem! No directors present in one/more patches ...")
     m_line_charge = top_charge_loop_integral(loop_idxs=calc_charge_loop_idxs_corrected, directors=directors,
                                              normals=mesh.vertex_normals, calc_idxs=calc_idxs, debug=debug)
     m_charge = m_line_charge + m_gauss_contribution
