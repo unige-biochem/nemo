@@ -22,7 +22,7 @@ import trimesh
 from trimesh import Trimesh
 from scipy.ndimage import binary_fill_holes
 
-from scripts.visuals import plot_dist_kymograph
+from scripts.visuals import plot_dist_kymograph, plot_flattened_neighborhood, plot_interp_grid, plot_matrix
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 
@@ -849,23 +849,20 @@ def tan_interp_batch(coords, intensities, grid_size):
     return grid_x, grid_y, grid_z
 
 
-def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, idxs_sel, debug=False):
+def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, idxs_sel, debug=False, debug_idx=None,
+                         debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None):
     dir_vec = np.zeros(shape=(len(vertices), 3))
     if debug:
-        vert_idx = np.random.choice(idxs_sel)
-        print(f"Debugging index: {vert_idx}")
-        i = np.argwhere(idxs_sel == vert_idx)[0][0]
-        theta_all = compute_2d_orientation(mode="fiber", img=grid_z[i].T, sampling_box_size=box_size,
+        theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
                                            onlytheta=True) * -1
         theta_center = np.radians(theta_all[theta_all.shape[0] // 2, theta_all.shape[1] // 2])
-        dir_vec[vert_idx] = np.cos(theta_center) * tan_x[vert_idx] + np.sin(theta_center) * \
-                            tan_y[vert_idx]
-        print(f"=== # {vert_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
-        visuals.plot_flattened_neighborhood(tan_cords[vert_idx], proj_layer_neigh[vert_idx])
-        visuals.plot_interp_grid(grid_x=grid_x[i], grid_y=grid_y[i], grid_z=grid_z[i],
-                                 points=tan_cords[vert_idx], theta=theta_center)
-        visuals.plot_matrix(theta_all, title="Theta", aspect=1, colorbar=True, origin="lower", cmap_limits=[-90, 90],
-                            remove_axes=True)
+        dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * \
+                             tan_y[debug_idx]
+        print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
+        plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
+                         points=tan_cords[debug_idx], theta=theta_center)
+        plot_matrix(theta_all, title="Theta", aspect=1, colorbar=True, origin="lower", cmap_limits=[-90, 90],
+                    remove_axes=True)
     else:
         print(f"Running batch analysis for {big_grid.shape} and tensor box size: {box_size} ")
         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
@@ -925,26 +922,28 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
 
 
 def patch_surface_integral(mesh, value, patch_idxs, debug=False):
-    patch_integrals = np.full(len(mesh.vertices), np.nan)
+    patch_integrals = []
     for i in range(patch_idxs.shape[0]):
         patch_faces = mesh.faces[np.isin(mesh.faces, patch_idxs[i]).all(axis=1)]
         v0, v1, v2 = patch_faces.T
         p0, p1, p2 = mesh.vertices[v0], mesh.vertices[v1], mesh.vertices[v2]
         areas = np.linalg.norm(np.cross(p1 - p0, p2 - p0), axis=1) / 2
         avg_val = np.nanmean([value[v0], value[v1], value[v2]])
-        patch_integrals[patch_idxs[i][0]] = np.nansum(avg_val * areas)
+        patch_integrals.append(np.nansum(avg_val * areas))
+    patch_integrals = np.array(patch_integrals)
     if debug:
-        print(f"-- surface integrals = {patch_integrals[~np.isnan(patch_integrals)]}")
+        print(f"-- surface integrals = {patch_integrals}")
     return patch_integrals
 
 
 def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
     boundary_indeces = []
-    for i in range(patch_idxs.shape[0]):
+    for i in range(len(patch_idxs)):
         patch_vertices = mesh.vertices[patch_idxs[i]]
-        patch_tan_x = tan_x[[patch_idxs[i][0]]]
-        patch_tan_y = tan_y[[patch_idxs[i][0]]]
-        patch_rel_pos = patch_vertices - patch_vertices[0, :][np.newaxis, :]
+        idx_rel_center = np.argmin(np.linalg.norm(patch_vertices - np.mean(patch_vertices, axis=0), axis=1))
+        patch_tan_x = tan_x[[patch_idxs[i][idx_rel_center]]]
+        patch_tan_y = tan_y[[patch_idxs[i][idx_rel_center]]]
+        patch_rel_pos = patch_vertices - patch_vertices[idx_rel_center, :][np.newaxis, :]
         rel_x = np.einsum("ij,kj->i", patch_rel_pos, patch_tan_x)
         rel_y = np.einsum("ij,kj->i", patch_rel_pos, patch_tan_y)
         patch_rel_angles = np.arctan2(rel_y, rel_x)
@@ -959,13 +958,13 @@ def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
     return boundary_indeces
 
 
-def top_charge_loop_integral(loop_idxs, directors, normals, calc_idxs, debug=False):
-    topological_charges = np.full(directors.shape[0], np.nan)
+def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, debug=False):
+    topological_charges = []
     for i in range(len(loop_idxs)):
         patch_indeces = loop_idxs[i]
-        central_index = calc_idxs[i]
         normal_sel = normals[patch_indeces]
-        directors_vec_sel = directors[patch_indeces][:, 3:]
+        dir_indices = np.searchsorted(director_indeces, patch_indeces)
+        directors_vec_sel = directors[dir_indices][:, 3:]
         p_current = directors_vec_sel
         p_next = np.roll(directors_vec_sel, -1, axis=0)
         pdiff = p_next - p_current
@@ -974,55 +973,37 @@ def top_charge_loop_integral(loop_idxs, directors, normals, calc_idxs, debug=Fal
         pdiff_proj = pdiff - (dot_prod_pdiff_normal[:, None] / dot_prod_normal_normal[:, None]) * normal_sel
         cross_pdiff_proj_pcurrent = np.cross(pdiff_proj, p_current)
         dot_prod_pdiff_proj_normal = np.einsum('ij,ij->i', cross_pdiff_proj_pcurrent, normal_sel)
+        print(np.sum(dot_prod_pdiff_proj_normal))
         m = np.sum(dot_prod_pdiff_proj_normal) / (2 * np.pi)
-        topological_charges[central_index] = m
+        topological_charges.append(m)
     if debug:
-        print(f"-- line charge m = {topological_charges[~np.isnan(topological_charges)]}")
+        print(f"-- line charge m = {topological_charges}")
     return topological_charges
 
 
 def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y, c_gauss, loop_angle_precision=1,
                       k_charge=5 ** 2, debug=False, return_all_contributions=False):
-    charge_neigh_rel_idxs = coord_search_neighbours(mesh.vertices, k=k_charge, debug=debug)[director_indeces[calc_idxs]]
     print(f">> Calculating topological charge for {len(directors)} directors...")
+    charge_patch_broad = coord_search_neighbours(mesh.vertices, k=k_charge, debug=debug)[director_indeces][calc_idxs]
     m_gauss_contribution = patch_surface_integral(mesh=mesh, value=c_gauss,
-                                                  patch_idxs=charge_neigh_rel_idxs,
-                                                  debug=debug)[director_indeces] / (2 * np.pi)
-    calc_charge_loop_idxs = find_boundary_indeces(mesh, charge_neigh_rel_idxs,
+                                                  patch_idxs=charge_patch_broad,
+                                                  debug=debug) / (2 * np.pi)
+    calc_charge_loop_idxs = find_boundary_indeces(mesh, [np.intersect1d(loop, director_indeces) for loop in
+                                                         charge_patch_broad],
                                                   tan_x=tan_x, tan_y=tan_y,
                                                   angle_precision=loop_angle_precision)
-    calc_charge_loop_idxs_corrected = []
-    calc_charge_loop_idxs_corrected_idxs = []
-    empty_loop_present = False
-    for loop in calc_charge_loop_idxs:
-        correct_loop = []
-        correct_loop_idxs = []
-        for i, loop_pos_idx in enumerate(loop):
-            pos = mesh.vertices[loop_pos_idx]
-            try:
-                i_loc = np.where(np.all(directors[:, :3] == pos, axis=1))[0][0]
-                correct_loop.append(i_loc)
-                correct_loop_idxs.append(loop_pos_idx)
-            except:
-                pass
-        if len(correct_loop) == 0:
-            empty_loop_present = True
-        correct_loop = np.array(correct_loop)
-        calc_charge_loop_idxs_corrected.append(correct_loop)
-        calc_charge_loop_idxs_corrected_idxs.append(np.array(correct_loop_idxs))
-    if empty_loop_present:
-        print("Problem! No directors present in one/more patches ...")
-    m_line_charge = top_charge_loop_integral(loop_idxs=calc_charge_loop_idxs_corrected, directors=directors,
-                                             normals=mesh.vertex_normals, calc_idxs=calc_idxs, debug=debug)
+    m_line_charge = top_charge_loop_integral(loop_idxs=calc_charge_loop_idxs, directors=directors,
+                                             director_indeces=director_indeces,
+                                             normals=mesh.vertex_normals, debug=debug)
     m_charge = m_line_charge + m_gauss_contribution
     if debug:
-        print(f"Charges calculated : {m_charge[calc_idxs]}")
+        print(f"Charges calculated : {m_charge}")
         total_charge = np.nansum(m_charge)
         print(f"Total Charge: {total_charge}")
     if not return_all_contributions:
-        return m_charge, calc_charge_loop_idxs_corrected_idxs
+        return m_charge, calc_charge_loop_idxs
     else:
-        return m_charge, calc_charge_loop_idxs_corrected_idxs, m_line_charge, m_gauss_contribution
+        return m_charge, calc_charge_loop_idxs, m_line_charge, m_gauss_contribution
 
 
 #############################################
