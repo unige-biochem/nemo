@@ -36,11 +36,14 @@ def normalise_range(data):
     return (data - data_min) / (data_max - data_min)
 
 
-def coord_search_neighbours(verts, k, n_process=8, debug=False, return_dists=False):
+def coord_search_neighbours(verts, k, custom_probes=None, n_process=8, debug=False, return_dists=False):
     if debug:
         print(f">> Searching {k} neighbours ...")
     tree = KDTree(verts)
-    dists, idxs = tree.query(verts, k=k, workers=n_process)
+    if custom_probes is not None:
+        dists, idxs = tree.query(custom_probes, k=k, workers=n_process)
+    else:
+        dists, idxs = tree.query(verts, k=k)
     if return_dists:
         return idxs, dists
     else:
@@ -139,14 +142,15 @@ def rescale_val_xyz(val, scale, debug=False):
         return val, val * zscale / xyscale, val * zscale / xyscale
 
 
-def find_valid_patches(mesh, idxs_neigh, factor=1.5):
-    centroids_patches = np.mean(mesh.vertices[idxs_neigh], axis=1)
-    reldist = np.linalg.norm(mesh.vertices - centroids_patches, axis=1)
-    patchreldistcutoff = factor * np.average(reldist)
-    outside_mask = reldist > patchreldistcutoff
-    valid_patch_idxs = np.where(~outside_mask)[0]
+def filter_valid_patches(verts, idxs_neigh, factor=0.1):
+    centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
+    reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
+    center_reldist = reldists[:, 0]
+    keep_mask = center_reldist < factor * np.max(reldists, axis=1)
+    valid_patch_idxs = idxs_neigh[keep_mask]
+    valid_idxs = np.argwhere(keep_mask)[:, 0]
     print(f"{len(valid_patch_idxs)} valid, {len(centroids_patches) - len(valid_patch_idxs)} invalid ! ")
-    return valid_patch_idxs
+    return valid_patch_idxs, valid_idxs
 
 
 def expand_2d_array(array, num):
@@ -529,12 +533,19 @@ def generate_sliced_mesh(img, img_scale, xres=1, yres=1, zres=1, normal_vec=None
 #########################
 # MESH ANALYSIS MODULES #
 #########################
-def curvature_by_srf_fit(mesh, k=4 ** 2, debug=False, gauss_crop_range=None, mean_crop_range=None):
+def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debug=False, gauss_crop_range=None,
+                         mean_crop_range=None, boundary_excl_factor=0.1):
     print(f">> Calculating curvature for mesh with k={k} and {len(mesh.vertices)} vertices...")
-    verts = mesh.vertices
+    random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
+    verts = mesh.vertices[random_idxs]
     N = len(verts)
-    normals = mesh.vertex_normals
-    neigh_idxs, neigh_dists = coord_search_neighbours(verts=verts, k=k, debug=False, return_dists=True)
+    normals = mesh.vertex_normals[random_idxs]
+
+    neigh_idxs = coord_search_neighbours(verts=verts, k=k, debug=False)
+    if filter_boundary:
+        neigh_idxs, valid_idxs = filter_valid_patches(verts=verts, idxs_neigh=neigh_idxs, factor=boundary_excl_factor)
+        N = len(neigh_idxs)
+        random_idxs = random_idxs[valid_idxs]
     neigh_verts = verts[neigh_idxs]
     neigh_normals = normals[neigh_idxs]
     tan_x_cov, tan_y_cov = create_tangential_basis(normals=normals, hide_output=True)
@@ -575,7 +586,7 @@ def curvature_by_srf_fit(mesh, k=4 ** 2, debug=False, gauss_crop_range=None, mea
         print(
             f"Mean: AVG = {np.average(C_mean)} | MIN = {np.min(C_mean)} | MAX = {np.max(C_mean)} | None? = {np.isnan(C_mean).sum()}")
 
-    Gauss_idxs = np.arange(0, verts.shape[0])
+    Gauss_idxs = random_idxs
     if gauss_crop_range is not None:
         print(f">> Cropping Gauss to min {gauss_crop_range[0]}, max {gauss_crop_range[1]}...")
         crop_mask = (gauss_crop_range[0] < C_gauss) & (C_gauss < gauss_crop_range[1])
@@ -584,7 +595,7 @@ def curvature_by_srf_fit(mesh, k=4 ** 2, debug=False, gauss_crop_range=None, mea
             print(
                 f"Gauss: AVG = {np.average(C_gauss)} | MIN = {np.min(C_gauss)} | MAX = {np.max(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
 
-    mean_idxs = np.arange(0, verts.shape[0])
+    mean_idxs = random_idxs
     if mean_crop_range is not None:
         print(f">> Cropping Mean to min {mean_crop_range[0]}, max {mean_crop_range[1]}...")
         crop_mask = (mean_crop_range[0] < C_mean) & (C_mean < mean_crop_range[1])
@@ -616,16 +627,16 @@ def density_estimate(mesh, k=30, debug=False, crop_range=None):
     return densities, idxs
 
 
-def inter_dist_mesh(mesh_1, mesh_2, debug=False, crop_range=None):
+def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None):
     print(f">> Calculating distance between two meshes ({mesh_1.vertices.shape[0]}, {mesh_2.vertices.shape[0]}) ...")
-    vertices_1, normals_1 = mesh_1.vertices, mesh_1.vertex_normals
-    ray_origins, ray_directions = vertices_1, normals_1
-    locations, index_ray, index_tri = mesh_2.ray.intersects_location(ray_origins, ray_directions)
+    random_idxs = np.random.choice(np.arange(mesh_1.vertices.shape[0]), size=num_sample)
+    vertices_1, normals_1 = mesh_1.vertices[random_idxs], mesh_1.vertex_normals[random_idxs]
+    locations, index_ray, index_tri = mesh_2.ray.intersects_location(vertices_1, normals_1)
     distances = np.full(len(vertices_1), np.nan)
     dist_vector = locations - vertices_1[index_ray]
     distances[index_ray] = np.einsum('ij,ij->i', dist_vector, normals_1[index_ray])
     valid_mask = ~np.isnan(distances)
-    valid_indeces = np.arange(0, vertices_1.shape[0])[valid_mask]
+    valid_indeces = random_idxs[valid_mask]
     valid_distances = distances[valid_mask]
     if debug:
         print(
@@ -658,18 +669,24 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 ######################
 # PROJECTION MODULES #
 ######################
-def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, show_proj=False,
+
+
+def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
               figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig=""):
     print(f">> Projecting {mode} image intensities on verts using {interp_method} interpolation method...")
     print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}")
     verts, normals = mesh.vertices, mesh.vertex_normals
-    distances = np.linspace(min_dist, max_dist, num_dist)
+    if min_dist_per_vert is None:
+        min_dist_per_vert = np.full(len(verts), min_dist)
+    else:
+        print(">> Overriding MIN distance !")
+    distances = np.linspace(0, max_dist - min_dist, num_dist)
     distances_reshaped = distances.reshape(1, num_dist, 1)
     img_grid = (
         np.arange(img.shape[0]) * scale[0], np.arange(img.shape[1]) * scale[1], np.arange(img.shape[2]) * scale[2])
     interp_function = RegularGridInterpolator(points=img_grid, values=img, method=interp_method, bounds_error=False,
                                               fill_value=-1)
-    outward_samples = verts[:, None, :] + normals[:, None, :] * distances_reshaped
+    outward_samples = verts[:, None, :] + normals[:, None, :] * (distances_reshaped + min_dist_per_vert[:, None, None])
     sampling_points = outward_samples.reshape(-1, 3)
 
     intensities = interp_function(sampling_points)
@@ -679,7 +696,8 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, show_p
     plot_mask = np.copy(intensities)
     plot_mask[plot_mask == -1] = None
     if show_proj:
-        plot_dist_kymograph(distances=distances, plot_mask=plot_mask, plot_all=masked_intensities, cmap=cmap,
+        plot_dist_kymograph(distances=distances, plot_mask=plot_mask,
+                            plot_all=masked_intensities, cmap=cmap,
                             figsize=figsize, unit=unit, savefig=savefig)
     if mode == "max":
         max_intensity_values = np.max(masked_intensities, axis=1)
@@ -849,9 +867,9 @@ def tan_interp_batch(coords, intensities, grid_size):
     return grid_x, grid_y, grid_z
 
 
-def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, idxs_sel, debug=False, debug_idx=None,
+def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None,
                          debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None):
-    dir_vec = np.zeros(shape=(len(vertices), 3))
+    dir_vec = np.zeros(shape=(len(tan_x), 3))
     if debug:
         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
                                            onlytheta=True) * -1
@@ -870,9 +888,9 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, idxs_sel, d
         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
         theta_center = np.radians(theta_all[center_indices, theta_mid_idx])
 
-        dir_vec[idxs_sel] = np.cos(theta_center)[:, None] * tan_x[idxs_sel] + \
-                            np.sin(theta_center)[:, None] * tan_y[idxs_sel]
-    directors = np.column_stack((vertices[idxs_sel], dir_vec[idxs_sel]))
+        dir_vec = np.cos(theta_center)[:, None] * tan_x + \
+                  np.sin(theta_center)[:, None] * tan_y
+    directors = np.column_stack((vertices, dir_vec))
     print(f"Finished! {len(directors)} director(s)!")
     return directors
 

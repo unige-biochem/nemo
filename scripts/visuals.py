@@ -454,7 +454,7 @@ def plot_dist_kymograph(distances, plot_mask, plot_all, cmap, figsize, unit, sav
     axes[0].set_ylabel("Sampling Point Index")
     axes[0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     axes[1].set_ylabel("Average Intensity (a.u.)")
-    axes[1].set_xlabel(f"Distance from Mesh ({unit})")
+    axes[1].set_xlabel(f"Distance from Min Distance ({unit})")
     avg_masked_mean = distances[np.argmax(np.average(plot_all, axis=0))]
     axes[1].axvline(x=avg_masked_mean, label=f"ARGMAX = {round(avg_masked_mean, 1)}")
     axes[1].legend()
@@ -795,6 +795,40 @@ def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=
         opacity=vec_opacity,
         vector_style=vector_style
     )
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
+def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=None, edge_width=0.3,
+                                  vec_length=10, vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
+                                  vector_style="line", img=None, scale=None, img_opacity=0.5):
+    print(">> Rendering 3D vector field...")
+    viewer = napari.Viewer()
+    if img is not None and scale is not None:
+        viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip")
+    if verts is not None and verts_colors is not None:
+        viewer.add_points(
+            data=verts,
+            border_color=verts_colors,
+            face_color=verts_colors,
+            size=pts_size,
+            opacity=pts_opacity,
+            blending=pts_blending
+        )
+    for i in range(len(vec_pos)):
+        centered_x = vec_pos[i][:, 0] - 0.5 * vec_dir[i][:, 0] * vec_length
+        centered_y = vec_pos[i][:, 1] - 0.5 * vec_dir[i][:, 1] * vec_length
+        centered_z = vec_pos[i][:, 2] - 0.5 * vec_dir[i][:, 2] * vec_length
+        centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+        print(centered_pos.shape, vec_dir[i].shape)
+        viewer.add_vectors(
+            data=np.stack((centered_pos, vec_dir[i]), axis=1),
+            edge_color=vec_colors[i],
+            edge_width=edge_width,
+            length=vec_length,
+            opacity=vec_opacity,
+            vector_style=vector_style
+        )
     viewer.dims.ndisplay = 3
     napari.run()
 
