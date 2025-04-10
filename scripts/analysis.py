@@ -10,6 +10,7 @@ import os
 import numpy as np
 from tifffile import imread, TiffFile
 from scipy.spatial import KDTree
+from scipy.spatial import cKDTree
 from skimage import measure
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
@@ -288,7 +289,7 @@ def thresh_img(img, thresh, inverse=True):
 
 def fill_holes_img(img):
     print(f">> Filling holes in img...")
-    return binary_fill_holes(img)
+    return binary_fill_holes(img).astype(float)
 
 
 #############################
@@ -673,6 +674,7 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
               figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig=""):
+    num_dist = int(num_dist)
     print(f">> Projecting {mode} image intensities on verts using {interp_method} interpolation method...")
     print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}")
     verts, normals = mesh.vertices, mesh.vertex_normals
@@ -730,6 +732,27 @@ def mercator_project(pts, ref_point=None, rotate=None, debug=False):
         print(f"Min X = {np.min(mercator_x)} | MAX X = {np.max(mercator_x)}")
         print(f"Min Y = {np.min(mercator_y)} | MAX Y = {np.max(mercator_y)}")
     return mercator_x, mercator_y
+
+
+def create_zstack(values, xcords, ycords, grid_n=None):
+    if grid_n is None:
+        grid_n = int(np.sqrt(len(xcords)))
+    else:
+        grid_n = int(grid_n)
+    print(f">> Creating z stack of {grid_n} x {grid_n} grid points...")
+    grid_x, grid_y = np.meshgrid(
+        np.linspace(xcords.min(), xcords.max(), grid_n),
+        np.linspace(ycords.min(), ycords.max(), grid_n)
+    )
+    proj_points = np.column_stack((xcords.ravel(), ycords.ravel()))
+    grid_points = np.column_stack((grid_x.ravel(), grid_y.ravel()))
+    tree = KDTree(proj_points)
+    _, nearest_idx = tree.query(grid_points, k=1)
+    z_stack = np.array([
+        np.fliplr(values[i].ravel()[nearest_idx].reshape(grid_x.shape).T)
+        for i in range(values.shape[0])
+    ])
+    return z_stack
 
 
 #############################################
@@ -985,13 +1008,15 @@ def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, de
         directors_vec_sel = directors[dir_indices][:, 3:]
         p_current = directors_vec_sel
         p_next = np.roll(directors_vec_sel, -1, axis=0)
+
+        p_next *= np.sign(np.einsum('ij,ij->i', p_current, p_next))[:, np.newaxis]
+
         pdiff = p_next - p_current
         dot_prod_pdiff_normal = np.einsum('ij,ij->i', pdiff, normal_sel)
         dot_prod_normal_normal = np.einsum('ij,ij->i', normal_sel, normal_sel)
         pdiff_proj = pdiff - (dot_prod_pdiff_normal[:, None] / dot_prod_normal_normal[:, None]) * normal_sel
         cross_pdiff_proj_pcurrent = np.cross(pdiff_proj, p_current)
         dot_prod_pdiff_proj_normal = np.einsum('ij,ij->i', cross_pdiff_proj_pcurrent, normal_sel)
-        print(np.sum(dot_prod_pdiff_proj_normal))
         m = np.sum(dot_prod_pdiff_proj_normal) / (2 * np.pi)
         topological_charges.append(m)
     if debug:

@@ -15,6 +15,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.colors import Normalize
 from matplotlib import colormaps
 import imageio
+from matplotlib import colors as pltcolors
 
 #################################
 # Dark/Light Mode for all Plots #
@@ -733,6 +734,32 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
         colors_mapped[:, 1] = colors
     viewer.add_points(verts, name='Mesh', shading=shading, opacity=opacity, blending=blending,
                       face_color=colors_mapped, border_color=colors_mapped, size=ptsize)
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
+def view_colored_mesh(mesh, vert_colors="red", mesh_shading="flat", mesh_opacity=1.0, img=None, scale=None,
+                      img_opacity=1.0, cmap_img="green", color_override=None):
+    print(">> Rendering colored mesh...")
+
+    if type(vert_colors) == str:
+        vert_colors = np.tile(np.array(pltcolors.to_rgb(vert_colors)), (mesh.vertices.shape[0], 1))
+    else:
+        if type(vert_colors[0]) == str:
+            vert_colors = np.array([pltcolors.to_rgb(c) for c in vert_colors])
+        else:
+            vert_colors = np.array(
+                [tuple(int(hex_code.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)) for hex_code in vert_colors])
+    if color_override is not None:
+        vert_colors = color_override.copy()
+        vert_colors[:, 3] = 1.0
+    viewer = napari.Viewer()
+    if img is not None:
+        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
+        # Reduce mesh opacity for better image visibility, can be changed in Napari
+        mesh_opacity *= 0.8
+    viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=vert_colors, shading=mesh_shading,
+                       opacity=mesh_opacity)
     viewer.dims.ndisplay = 3
     napari.run()
 
