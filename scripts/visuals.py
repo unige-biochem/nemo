@@ -16,6 +16,8 @@ from matplotlib.colors import Normalize
 from matplotlib import colormaps
 import imageio
 from matplotlib import colors as pltcolors
+import matplotlib.gridspec as gridspec
+from collections import OrderedDict
 
 #################################
 # Dark/Light Mode for all Plots #
@@ -313,15 +315,15 @@ def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, sa
     plt.show()
 
 
-def plot_matrix(matrix, aspect=1, colorbar=False, cmap="twilight", figsize=(4, 3), savefig="", dpi=200, title=None,
-                origin="lower", cmap_limits=None, cmap_label="", remove_axes=False):
+def plot_matrix(matrix, unit="px", colorbar=False, cmap="twilight", figsize=(4, 3), savefig="", dpi=200,
+                title=None, origin="upper", cmap_limits=None, cmap_label="", remove_axes=False, scale=(1, 1, 1)):
     print(">> Plotting a matrix...")
     fig, ax = plt.subplots(figsize=figsize)
     if cmap_limits is not None:
         vmin, vmax = cmap_limits
     else:
         vmin, vmax = matrix.min(), matrix.max()
-    ax.imshow(matrix, aspect=aspect, cmap=cmap, origin=origin, vmin=vmin, vmax=vmax)
+    ax.imshow(matrix, aspect=scale[1] / scale[2], cmap=cmap, origin=origin, vmin=vmin, vmax=vmax)
     if title is not None:
         ax.set_title(title)
     if colorbar:
@@ -330,9 +332,182 @@ def plot_matrix(matrix, aspect=1, colorbar=False, cmap="twilight", figsize=(4, 3
         cbar.set_label(cmap_label)
     if remove_axes:
         ax.axis('off')
+    else:
+        ax.set_xlabel(f"X ({unit})")
+        ax.set_ylabel(f"Y ({unit})")
+        ax.set_xticks(np.linspace(0, matrix.shape[1], 5))
+        ax.set_xticklabels(np.round(ax.get_xticks() * scale[2], 2))
+        ax.set_yticks(np.linspace(0, matrix.shape[0], 5))
+        ax.set_yticklabels(np.round(ax.get_yticks() * scale[1], 2))
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
+    plt.show()
+
+
+def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figsize=(4, 3),
+                        savefig="", dpi=200, vec_colors=None, matrix_cmap="Greys_r", vec_cmap="Spectral",
+                        cbar_vector_label="", cbar_matrix_label="", matrix_origin="upper", unit="px",
+                        remove_axes=False, scale=(1, 1, 1), img_cmap_limits=None, vec_cmap_limits=None):
+    fig, ax = plt.subplots(figsize=figsize)
+    if title is not None:
+        plt.title(title)
+    vx = np.cos(angle_field)
+    vy = np.sin(angle_field)
+    if img_cmap_limits is not None:
+        vmin, vmax = img_cmap_limits
+    else:
+        vmin, vmax = matrix.min(), matrix.max()
+    img = ax.imshow(matrix, cmap=matrix_cmap, origin=matrix_origin, aspect=scale[1] / scale[2], vmin=vmin, vmax=vmax)
+
+    cmapable = plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=matrix_cmap)
+    cbar = fig.colorbar(cmapable, ax=ax, orientation="vertical", fraction=0.02, pad=0.05)
+    cbar.set_label(cbar_matrix_label)
+
+    if vec_colors is not None:
+        if vec_cmap_limits is not None:
+            vmin, vmax = vec_cmap_limits
+        else:
+            vmin, vmax = vec_colors.min(), vec_colors.max()
+        cmapable = plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=vec_cmap)
+        cbar = fig.colorbar(cmapable, ax=ax, orientation="vertical", fraction=0.02, pad=0.05)
+        cbar.set_label(cbar_vector_label)
+        cmapable.set_array([])
+        colors = cmapable.to_rgba(vec_colors)
+    else:
+        colors = "red"
+    ax.quiver(x, y, vx, vy, color=colors, scale=1 / veclength, pivot='middle',
+              headaxislength=0, scale_units="xy")
+    if remove_axes:
+        ax.axis('off')
+    else:
+        ax.set_xlabel(f"X ({unit})")
+        ax.set_ylabel(f"Y ({unit})")
+        ax.set_xticks(np.linspace(0, matrix.shape[1], 5))
+        ax.set_xticklabels(np.round(ax.get_xticks() * scale[2], 2))
+        ax.set_yticks(np.linspace(0, matrix.shape[0], 5))
+        ax.set_yticklabels(np.round(ax.get_yticks() * scale[1], 2))
+
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    plt.show()
+
+
+def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_idxs, ap_orth_binned_idxs,
+                       cmap="tab20", scale=(1, 1, 1), unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2):
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    for ax, dirs, idxs, title in zip(
+            axes,
+            [ap_par_binned_dirs, ap_orth_binned_dirs],
+            [ap_par_binned_idxs, ap_orth_binned_idxs],
+            ["Binned S PARALLEL", "Binned S ORTHOGONAL"]
+    ):
+        all_dirs = np.concatenate(dirs)
+        all_bins = np.concatenate([np.full(len(group), i) for i, group in enumerate(idxs)])
+        sc = ax.scatter(
+            all_dirs[:, 0] / scale[2], all_dirs[:, 1] / scale[1],
+            s=pt_size, c=all_bins, cmap=cmap
+        )
+        ax.set_aspect("equal")
+        ax.set_xlabel(f"X ({unit})")
+        ax.set_ylabel(f"Y ({unit})")
+        ax.invert_yaxis()
+        fig.colorbar(sc, ax=ax, label="Bin index")
+        ax.set_title(title)
+
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    plt.show()
+
+
+def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 1, 1), unit="px", savefig="",
+                           dpi=200, figsize=(14, 6), pt_size=10):
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    for ax, s_values, title, label in zip(
+            axes,
+            [s_parallel, s_orthogonal],
+            ["S PARALLEL", "S ORTHOGONAL"],
+            ["s_parallel", "s_orthogonal"]
+    ):
+        im = ax.imshow(img, cmap="gray", alpha=0.5, aspect=scale[1] / scale[2], origin="upper")
+        ax.plot(curve[:, 0] / scale[2], curve[:, 1] / scale[1], "r-", label="Centerline")
+        sc = ax.scatter(pts[:, 0] / scale[2], pts[:, 1] / scale[1], c=s_values, cmap="Spectral",
+                        label=label, s=pt_size)
+        ax.set_xlabel(f"X ({unit})")
+        ax.set_ylabel(f"Y ({unit})")
+        ax.set_xticks(np.linspace(0, img.shape[1], 5))
+        ax.set_xticklabels(np.round(ax.get_xticks() * scale[2], 2))
+        ax.set_yticks(np.linspace(0, img.shape[0], 5))
+        ax.set_yticklabels(np.round(ax.get_yticks() * scale[1], 2))
+        fig.colorbar(sc, ax=ax, label=label)
+        ax.set_title(title)
+        ax.legend()
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    plt.show()
+
+
+def plot_binned_ap_results(img, curve, ap_par_binned_S_2d, ap_orth_binned_S_2d,
+                           s_parallel_bin_centers, s_orthogonal_bin_centers,
+                           s_par_orthogonality, s_orth_orthogonality,
+                           scale=(1, 1, 1), unit="px", savefig="", dpi=200):
+    fig = plt.figure(figsize=(10, 8))
+    gs = gridspec.GridSpec(2, 2, height_ratios=[7, 1.5], width_ratios=[1.2, 6.5], wspace=0.1, hspace=0.3)
+    ax_left = fig.add_subplot(gs[0, 0])
+    ax_left.axvline(1, c="grey", linestyle="--")
+    ax_left.axvline(0, c="grey", linestyle="--")
+    ax_left.plot(ap_orth_binned_S_2d, s_orthogonal_bin_centers, "s-", label='Nematic order $S$',
+                 color='tab:blue', alpha=0.7)
+    ax_left.plot(s_orth_orthogonality, s_orthogonal_bin_centers, "o-", label='Orthogonality',
+                 color='tab:orange', alpha=0.7)
+    ax_left.invert_xaxis()
+    ax_left.set_ylabel(f"A-P ⊥ coordinate ({unit})")
+    ax_left.set_xlim(1.1, -0.1)
+    ax_img = fig.add_subplot(gs[0, 1])
+    ax_img.imshow(img, cmap='gray', origin='upper', aspect=scale[1] / scale[2])
+    ax_img.scatter(curve[:, 0] / scale[2], curve[:, 1] / scale[1], s=2, c=np.linspace(0, 1, len(curve)),
+                   cmap="Spectral", label="Central line of Elongation")
+    ax_img.set_xlabel(f"X ({unit})")
+    ax_img.set_ylabel(f"Y ({unit})")
+    ax_img.set_xticks(np.linspace(0, img.shape[1], 5))
+    ax_img.set_xticklabels(np.round(ax_img.get_xticks() * scale[2], 2))
+    ax_img.set_yticks(np.linspace(0, img.shape[0], 5))
+    ax_img.set_yticklabels(np.round(ax_img.get_yticks() * scale[1], 2))
+    ax_bottom = fig.add_subplot(gs[1, 1])
+    ax_bottom.axhline(0, c="grey", linestyle="--")
+    ax_bottom.axhline(1, c="grey", linestyle="--")
+    ax_bottom.plot(s_parallel_bin_centers, ap_par_binned_S_2d, "s-", label='Nematic order $S$',
+                   color='tab:blue', alpha=0.7)
+    ax_bottom.plot(s_parallel_bin_centers, s_par_orthogonality, "o-", label='Orthogonality',
+                   color='tab:orange', alpha=0.7)
+    ax_bottom.set_xlabel(f"A-P || coordinate ({unit})")
+    ax_bottom.set_ylim(-0.1, 1.1)
+    fig.add_subplot(gs[1, 0]).axis("off")
+
+    handles = []
+    labels = []
+    for ax in [ax_left, ax_bottom, ax_img]:
+        h, l = ax.get_legend_handles_labels()
+        handles.extend(h)
+        labels.extend(l)
+    unique = list(OrderedDict(zip(labels, handles)).items())
+    labels, handles = zip(*unique)
+    fig.legend(handles, labels,
+               loc='lower left',
+               bbox_to_anchor=(0.05, 0.1),
+               fontsize=9,
+               frameon=True,
+               title="Legend",
+               title_fontsize=10)
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     plt.show()
 
 
@@ -536,33 +711,6 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
     plt.show()
 
 
-def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, vescale=50, title=None, figsize=(4, 3),
-                        savefig="", dpi=200, vec_colors=None, matrix_cmap="Greys_r", vec_cmap="Spectral",
-                        cbar_vector_label="", cbar_matrix_label="", matrix_origin="lower"):
-    fig, ax = plt.subplots(figsize=figsize)
-    if title is not None:
-        plt.title(title)
-    vx = np.cos(angle_field)
-    vy = np.sin(angle_field)
-    centered_x = x - 0.5 * vx * veclength
-    centered_y = y - 0.5 * vy * veclength
-    img = ax.imshow(matrix, cmap=matrix_cmap, origin=matrix_origin)
-    fig.colorbar(img, ax=ax, label=cbar_matrix_label)
-    if vec_colors is not None:
-        norm = plt.Normalize(vec_colors.min(), vec_colors.max())
-        sm = plt.cm.ScalarMappable(cmap=vec_cmap, norm=norm)
-        sm.set_array([])
-        fig.colorbar(sm, ax=ax, label=cbar_vector_label, fraction=0.046, pad=0.04)
-        colors = sm.to_rgba(vec_colors)
-    else:
-        colors = "red"
-    ax.quiver(centered_x, centered_y, vx, vy, color=colors, scale=vescale, pivot='middle', headaxislength=0)
-    if savefig != "":
-        create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
-
-
 def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize=(6, 6), savefig="", dpi=200, bins=30):
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=figsize)
     counts, bin_edges = np.histogram(angles_deg, bins=bins, range=(-90, 90), density=True)
@@ -739,7 +887,7 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
 
 
 def view_colored_mesh(mesh, vert_colors="red", mesh_shading="flat", mesh_opacity=1.0, img=None, scale=None,
-                      img_opacity=1.0, cmap_img="green", color_override=None):
+                      img_opacity=1.0, cmap_img="green", color_override=None, mesh_blending="opaque"):
     print(">> Rendering colored mesh...")
 
     if type(vert_colors) == str:
@@ -759,7 +907,7 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="flat", mesh_opacity
         # Reduce mesh opacity for better image visibility, can be changed in Napari
         mesh_opacity *= 0.8
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=vert_colors, shading=mesh_shading,
-                       opacity=mesh_opacity)
+                       opacity=mesh_opacity, blending=mesh_blending)
     viewer.dims.ndisplay = 3
     napari.run()
 
@@ -898,6 +1046,47 @@ def view_mesh_dir_field(mesh_list, directors, vec_colors, verts=None, verts_colo
     napari.run()
 
 
+def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20, vec_edge_width=None,
+                                mesh_vert_colors="red", vec_opacity=1.0, vector_style="line",
+                                mesh_blending="opaque", mesh_color_override=None, mesh_opacity=1.0,
+                                mesh_shading="flat"):
+    print(">> Rendering mesh and colored vertices...")
+    vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
+
+    if type(mesh_vert_colors) == str:
+        mesh_vert_colors = np.tile(np.array(pltcolors.to_rgb(mesh_vert_colors)), (mesh.vertices.shape[0], 1))
+    else:
+        if type(mesh_vert_colors[0]) == str:
+            mesh_vert_colors = np.array([pltcolors.to_rgb(c) for c in mesh_vert_colors])
+        else:
+            mesh_vert_colors = np.array(
+                [tuple(int(hex_code.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)) for hex_code in
+                 mesh_vert_colors])
+    if mesh_color_override is not None:
+        vert_colors = color_override.copy()
+        vert_colors[:, 3] = 1.0
+
+    if vec_edge_width is None:
+        vec_edge_width = vec_length / 8
+    viewer = napari.Viewer()
+    viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=mesh_vert_colors, shading=mesh_shading,
+                       opacity=mesh_opacity, blending=mesh_blending)
+    centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
+    centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * vec_length
+    centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * vec_length
+    centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+    viewer.add_vectors(
+        data=np.stack((centered_pos, vec_dir), axis=1),
+        edge_color=vec_colors,
+        edge_width=vec_edge_width,
+        length=vec_length,
+        opacity=vec_opacity,
+        vector_style=vector_style
+    )
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
 def view_neighbourhood(points, intensities, neighbours, sel_idx, mesh_opacity=0.3, neighbour_opacity=1.0, pt_size=5,
                        mesh_size=2, plot_coord_system=False, mesh_blending="opaque"):
     print(">> Rendering the neighbourhood of a particle...")
@@ -914,5 +1103,27 @@ def view_neighbourhood(points, intensities, neighbours, sel_idx, mesh_opacity=0.
         viewer.add_vectors(
             np.stack((np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])),
                      axis=1), edge_color=["red", "green", "blue"], length=100, edge_width=1)
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
+def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, img=None, ptsize=2, cmap_img="green",
+                                blending="opaque", shading="none", opacity=0.2, use_orig_color=True):
+    print(">> Rendering colored vertices...")
+    viewer = napari.Viewer()
+    if img is not None:
+        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale)
+    if use_orig_color:
+        colors_mapped1 = colors1.copy()
+        colors_mapped2 = colors2.copy()
+    else:
+        colors_mapped1 = np.zeros((colors1.shape[0], 3))
+        colors_mapped1[:, 1] = colors1
+        colors_mapped2 = np.zeros((colors2.shape[0], 3))
+        colors_mapped2[:, 1] = colors2
+    viewer.add_points(verts1, name='Mesh1', shading=shading, opacity=opacity, blending=blending,
+                      face_color=colors_mapped1, border_color=colors_mapped1, size=ptsize)
+    viewer.add_points(verts2, name='Mesh2', shading=shading, opacity=opacity, blending=blending,
+                      face_color=colors_mapped2, border_color=colors_mapped2, size=ptsize)
     viewer.dims.ndisplay = 3
     napari.run()

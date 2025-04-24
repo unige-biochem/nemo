@@ -10,7 +10,6 @@ import os
 import numpy as np
 from tifffile import imread, TiffFile
 from scipy.spatial import KDTree
-from scipy.spatial import cKDTree
 from skimage import measure
 from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
@@ -22,10 +21,11 @@ from skimage.filters import threshold_yen
 import trimesh
 from trimesh import Trimesh
 from scipy.ndimage import binary_fill_holes
-
+from scipy.ndimage import map_coordinates
 from scripts.visuals import plot_dist_kymograph, plot_flattened_neighborhood, plot_interp_grid, plot_matrix
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
+from sklearn.decomposition import PCA
 
 
 #################
@@ -173,7 +173,11 @@ def expand_3d_array(array, num):
 ############################
 def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_scaling=None, img_unit="um"):
     print(f">> Importing image {path}...")
-    img_raw = imread(path)
+    try:
+        img_raw = imread(path)
+    except:
+        print(f"[!] Image does not exist, aborting !")
+        return None
     img_dim = img_raw.shape
     n_dim = len(img_dim)
     if n_dim != 3:
@@ -801,6 +805,64 @@ def compute_2d_orientation(mode, img, sampling_box_size, onlytheta=False, debug=
         return theta, energy, coherency, vectors
 
 
+def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
+    if debug:
+        print("Averaging 2D nematic tensor...")
+    n_vecs = directors[:, 2:]
+    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
+    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
+    if weights is None:
+        q_avg = np.average(q[neigh_idxs], axis=1)
+    else:
+        w = weights[neigh_idxs][..., np.newaxis, np.newaxis]
+        q_avg = np.sum(q[neigh_idxs] * w, axis=1)
+    eigvals, eigvecs = np.linalg.eigh(q_avg)
+    max_indeces = np.argmax(eigvals, axis=1)
+    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
+    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
+    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
+    n_avg = max_eigvecs
+    S_order = max_eigvals * 2
+    if debug:
+        print(f"director components = \n {n_vecs}")
+        print(f"q with shape {q.shape} = \n {q}")
+        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
+        print(f"S_order with shape {S_order.shape} = \n {S_order}")
+        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
+    return S_order, n_avg
+
+
+def avg_2d_nem_tens_bins(directors, bins_idxs, debug=False, weights=None):
+    if debug:
+        print("Averaging 2D nematic tensor...")
+    n_vecs = directors[:, 2:]
+    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
+
+    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
+    q_avg = []
+    for b in bins_idxs:
+        if weights is None:
+            q_avg.append(np.average(q[b], axis=0))
+        else:
+            w = weights[b][:, np.newaxis, np.newaxis]
+            q_avg.append(np.sum(q[b] * w, axis=0))
+    q_avg = np.stack(q_avg)
+    eigvals, eigvecs = np.linalg.eigh(q_avg)
+    max_indeces = np.argmax(eigvals, axis=1)
+    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
+    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
+    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
+    n_avg = max_eigvecs
+    S_order = max_eigvals * 2
+    if debug:
+        print(f"director components = \n {n_vecs}")
+        print(f"q with shape {q.shape} = \n {q}")
+        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
+        print(f"S_order with shape {S_order.shape} = \n {S_order}")
+        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
+    return S_order, n_avg
+
+
 def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
     if debug:
         print(
@@ -821,27 +883,82 @@ def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
     return theta_all_deg, theta_masked_rad, S_2d, n_2d, X, Y, directors_2d
 
 
-def avg_2d_nem_tens(directors, neigh_idxs, debug=False):
-    if debug:
-        print("Averaging 2D nematic tensor...")
-    n_vecs = directors[:, 2:]
-    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
-    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
-    q_avg = np.average(q[neigh_idxs], axis=1)
-    eigvals, eigvecs = np.linalg.eigh(q_avg)
-    max_indeces = np.argmax(eigvals, axis=1)
-    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-    n_avg = max_eigvecs
-    S_order = max_eigvals * 2
-    if debug:
-        print(f"director components = \n {n_vecs}")
-        print(f"q with shape {q.shape} = \n {q}")
-        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
-        print(f"S_order with shape {S_order.shape} = \n {S_order}")
-        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg
+def find_pca_axes(img):
+    non_zero_indices = np.column_stack(np.where(img > 0))
+    center = np.mean(non_zero_indices, axis=0)
+    normalized_points = non_zero_indices - center
+    pca = PCA(n_components=2)
+    pca.fit(normalized_points)
+    axes = pca.components_
+    return axes, center
+
+
+def proj2curve(points, curve):
+    tree = KDTree(curve)
+    dists, idxs = tree.query(points)
+    closest_points = curve[idxs]
+    s_parallel = np.cumsum(np.sqrt(np.sum(np.diff(curve, axis=0) ** 2, axis=1)))
+    s_parallel = np.insert(s_parallel, 0, 0)
+    s_proj = s_parallel[idxs]
+    s_orthogonal = np.linalg.norm(points - closest_points, axis=1)
+    return s_proj, s_orthogonal
+
+
+def filter_curve_inside_shape(curve, image, thresh=0.5, scale=(1, 1)):
+    x_int = np.clip(np.round(curve[:, 0] / scale[0]).astype(int), 0, image.shape[1] - 1)
+    y_int = np.clip(np.round(curve[:, 1] / scale[1]).astype(int), 0, image.shape[0] - 1)
+    mask = image[y_int, x_int] > thresh
+    return curve[mask]
+
+
+def bin_array_with_indices(values, n_bins):
+    sorted_indices = np.argsort(values)
+    binned_indices = np.array_split(sorted_indices, n_bins)
+    return binned_indices
+
+
+def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
+                  nematic_weights=None):
+    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
+                                                                  bins_idxs=ap_par_binned_idxs, weights=nematic_weights)
+    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
+                                                                    bins_idxs=ap_orth_binned_idxs,
+                                                                    weights=nematic_weights)
+    nematic_results = ap_par_binned_S_2d, ap_par_binned_n_2d, ap_orth_binned_S_2d, ap_orth_binned_n_2d
+    ap_par_binned_dirs = []
+    ap_orth_binned_dirs = []
+    s_parallel_bin_centers = []
+    s_orthogonal_bin_centers = []
+    s_par_orthogonality = []
+    s_orth_orthogonality = []
+    curve_tangents = np.diff(curve, axis=0)
+    curve_tangents /= np.linalg.norm(curve_tangents, axis=1, keepdims=True)
+    curve_pt_tree = KDTree(curve[:-1])
+
+    for i_, parallel_bin_idxs in enumerate(ap_par_binned_idxs):
+        ap_par_binned_dirs.append(directors[parallel_bin_idxs])
+        s_parallel_bin_centers.append(np.mean(s_parallel[parallel_bin_idxs], axis=0))
+        _, indices = curve_pt_tree.query(directors[:, :2][parallel_bin_idxs])
+        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
+        local_normals = np.mean(local_normals, axis=0)
+        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
+        s_par_orthogonality.append(np.abs(np.dot(ap_par_binned_n_2d[i_], local_normals)))
+
+    for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
+        ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
+        s_orthogonal_bin_centers.append(np.mean(s_orthogonal[orthogonal_bin_idxs], axis=0))
+        _, indices = curve_pt_tree.query(directors[:, :2][orthogonal_bin_idxs])
+        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
+        local_normals = np.mean(local_normals, axis=0)
+        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
+        s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
+    s_parallel_bin_centers = np.array(s_parallel_bin_centers)
+    s_orthogonal_bin_centers = np.array(s_orthogonal_bin_centers)
+    s_par_orthogonality = np.array(s_par_orthogonality)
+    s_orth_orthogonality = np.array(s_orth_orthogonality)
+    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality
+    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality
+    return parallel_results, orthogonal_results, nematic_results
 
 
 ##############################################
@@ -902,7 +1019,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
         plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
                          points=tan_cords[debug_idx], theta=theta_center)
-        plot_matrix(theta_all, title="Theta", aspect=1, colorbar=True, origin="lower", cmap_limits=[-90, 90],
+        plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
                     remove_axes=True)
     else:
         print(f"Running batch analysis for {big_grid.shape} and tensor box size: {box_size} ")

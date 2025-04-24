@@ -31,7 +31,7 @@ def load_array(name, folderpath, return_df=False):
         raw_data = raw_data.ravel()
     print(f">> Loaded .../{name}.csv | cols {df_cols} | shape {raw_data.shape}")
     if return_df:
-        return df_cols, df, raw_data
+        return df
     else:
         return raw_data
 
