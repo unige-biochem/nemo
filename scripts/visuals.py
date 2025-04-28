@@ -218,78 +218,34 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, fig
     else:
         vmin, vmax = manual_vminmax
     fig, axes = plt.subplots(2, 3, figsize=figsize)
-    mask = verts[:, 0] >= verts[:, 0].max() / 2
-    axes[0, 0].hexbin(verts[:, 2][mask], verts[:, 1][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[0, 0].set_xlabel(f'X ({unit})')
-    axes[0, 0].set_xticks(np.linspace(verts[:, 2][mask].min(), verts[:, 2][mask].max(), 3))
-    axes[0, 0].set_ylabel(f'Y ({unit})')
-    axes[0, 0].set_yticks(np.linspace(verts[:, 1][mask].min(), verts[:, 1][mask].max(), 3))
-
-    mask = verts[:, 1] >= verts[:, 1].max() / 2
-    axes[0, 1].hexbin(verts[:, 2][mask], verts[:, 0][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[0, 1].set_xlabel(f'X ({unit})')
-    axes[0, 1].set_xticks(np.linspace(verts[:, 2][mask].min(), verts[:, 2][mask].max(), 3))
-    axes[0, 1].set_ylabel(f'Z ({unit})')
-    axes[0, 1].set_yticks(np.linspace(verts[:, 0][mask].min(), verts[:, 0][mask].max(), 3))
-
-    mask = verts[:, 2] >= verts[:, 2].max() / 2
-    axes[0, 2].hexbin(verts[:, 1][mask], verts[:, 0][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[0, 2].set_xlabel(f'Y ({unit})')
-    axes[0, 2].set_xticks(np.linspace(verts[:, 1][mask].min(), verts[:, 1][mask].max(), 3))
-    axes[0, 2].set_ylabel(f'Z ({unit})')
-    axes[0, 2].set_yticks(np.linspace(verts[:, 0][mask].min(), verts[:, 0][mask].max(), 3))
-
-    mask = verts[:, 0] < verts[:, 0].max() / 2
-    axes[1, 0].hexbin(verts[:, 2][mask], verts[:, 1][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1, 0].set_xlabel(f'X ({unit})')
-    axes[1, 0].set_xticks(np.linspace(verts[:, 2][mask].min(), verts[:, 2][mask].max(), 3))
-    axes[1, 0].set_ylabel(f'Y ({unit})')
-    axes[1, 0].set_yticks(np.linspace(verts[:, 1][mask].min(), verts[:, 1][mask].max(), 3))
-
-    mask = verts[:, 1] < verts[:, 1].max() / 2
-    axes[1, 1].hexbin(verts[:, 2][mask], verts[:, 0][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1, 1].set_xlabel(f'X ({unit})')
-    axes[1, 1].set_xticks(np.linspace(verts[:, 2][mask].min(), verts[:, 2][mask].max(), 3))
-    axes[1, 1].set_ylabel(f'Z ({unit})')
-    axes[1, 1].set_yticks(np.linspace(verts[:, 0][mask].min(), verts[:, 0][mask].max(), 3))
-
-    mask = verts[:, 2] < verts[:, 2].max() / 2
-    axes[1, 2].hexbin(verts[:, 1][mask], verts[:, 0][mask],
-                      C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1, 2].set_xlabel(f'Y ({unit})')
-    axes[1, 2].set_xticks(np.linspace(verts[:, 1][mask].min(), verts[:, 1][mask].max(), 3))
-    axes[1, 2].set_ylabel(f'Z ({unit})')
-    axes[1, 2].set_yticks(np.linspace(verts[:, 0][mask].min(), verts[:, 0][mask].max(), 3))
-    axes[0, 0].set_aspect("equal")
-    axes[0, 1].set_aspect("equal")
-    axes[0, 2].set_aspect("equal")
-    axes[1, 0].set_aspect("equal")
-    axes[1, 1].set_aspect("equal")
-    axes[1, 2].set_aspect("equal")
-    axes[0, 0].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-    axes[0, 1].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-    axes[0, 2].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-    axes[1, 0].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-    axes[1, 1].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-    axes[1, 2].set_xticklabels(np.round(axes[0, 0].get_xticks(), 2))
-
-    axes[0, 0].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-    axes[0, 1].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-    axes[0, 2].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-    axes[1, 0].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-    axes[1, 1].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-    axes[1, 2].set_yticklabels(np.round(axes[0, 0].get_yticks(), 2))
-
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
-                        ax=axes, orientation="vertical", fraction=0.02, pad=0.05)
+    panels = [
+        (0, 0, verts[:, 0] >= verts[:, 0].max() / 2, verts[:, 2], verts[:, 1], 'X', 'Y'),
+        (0, 1, verts[:, 1] >= verts[:, 1].max() / 2, verts[:, 2], verts[:, 0], 'X', 'Z'),
+        (0, 2, verts[:, 2] >= verts[:, 2].max() / 2, verts[:, 1], verts[:, 0], 'Y', 'Z'),
+        (1, 0, verts[:, 0] < verts[:, 0].max() / 2, verts[:, 2], verts[:, 1], 'X', 'Y'),
+        (1, 1, verts[:, 1] < verts[:, 1].max() / 2, verts[:, 2], verts[:, 0], 'X', 'Z'),
+        (1, 2, verts[:, 2] < verts[:, 2].max() / 2, verts[:, 1], verts[:, 0], 'Y', 'Z'),
+    ]
+    for i, j, mask, x, y, xlabel, ylabel in panels:
+        ax = axes[i, j]
+        if np.any(mask):
+            ax.hexbin(x[mask], y[mask], C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
+            ax.set_xlabel(f'{xlabel} ({unit})')
+            ax.set_ylabel(f'{ylabel} ({unit})')
+            ax.set_xticks(np.linspace(x[mask].min(), x[mask].max(), 3))
+            ax.set_yticks(np.linspace(y[mask].min(), y[mask].max(), 3))
+            ax.set_xticklabels(np.round(ax.get_xticks(), 2))
+            ax.set_yticklabels(np.round(ax.get_yticks(), 2))
+            ax.set_aspect('equal')
+        else:
+            ax.set_visible(False)
+    cbar = fig.colorbar(
+        plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
+        ax=axes, orientation="vertical", fraction=0.02, pad=0.05
+    )
     cbar.set_label(cmap_label)
-
     fig.subplots_adjust(right=0.85)
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
@@ -358,7 +314,7 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figs
         vmin, vmax = img_cmap_limits
     else:
         vmin, vmax = matrix.min(), matrix.max()
-    img = ax.imshow(matrix, cmap=matrix_cmap, origin=matrix_origin, aspect=scale[1] / scale[2], vmin=vmin, vmax=vmax)
+    ax.imshow(matrix, cmap=matrix_cmap, origin=matrix_origin, aspect=scale[1] / scale[2], vmin=vmin, vmax=vmax)
 
     cmapable = plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=matrix_cmap)
     cbar = fig.colorbar(cmapable, ax=ax, orientation="vertical", fraction=0.02, pad=0.05)
@@ -377,7 +333,7 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figs
     else:
         colors = "red"
     ax.quiver(x, y, vx, vy, color=colors, scale=1 / veclength, pivot='middle',
-              headaxislength=0, scale_units="xy")
+              scale_units="xy", headlength=0, headwidth=0, headaxislength=0)
     if remove_axes:
         ax.axis('off')
     else:
@@ -395,19 +351,19 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figs
 
 
 def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_idxs, ap_orth_binned_idxs,
-                       cmap="tab20", scale=(1, 1, 1), unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2):
+                       cmap="tab20", unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     for ax, dirs, idxs, title in zip(
             axes,
             [ap_par_binned_dirs, ap_orth_binned_dirs],
             [ap_par_binned_idxs, ap_orth_binned_idxs],
-            ["Binned S PARALLEL", "Binned S ORTHOGONAL"]
+            ["Binned Parallel", "Binned Orthogonal"]
     ):
         all_dirs = np.concatenate(dirs)
         all_bins = np.concatenate([np.full(len(group), i) for i, group in enumerate(idxs)])
         sc = ax.scatter(
-            all_dirs[:, 0] / scale[2], all_dirs[:, 1] / scale[1],
+            all_dirs[:, 0], all_dirs[:, 1],
             s=pt_size, c=all_bins, cmap=cmap
         )
         ax.set_aspect("equal")
@@ -425,15 +381,15 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
 
 
 def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 1, 1), unit="px", savefig="",
-                           dpi=200, figsize=(14, 6), pt_size=10):
+                           dpi=200, figsize=(16, 6), pt_size=10):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for ax, s_values, title, label in zip(
             axes,
             [s_parallel, s_orthogonal],
-            ["S PARALLEL", "S ORTHOGONAL"],
-            ["s_parallel", "s_orthogonal"]
+            ["Parallel Coordinate", "Orthogonal Coordinate"],
+            ["parallel_coordinate", "orthogonal_coordinate"]
     ):
-        im = ax.imshow(img, cmap="gray", alpha=0.5, aspect=scale[1] / scale[2], origin="upper")
+        ax.imshow(img, cmap="gray", alpha=0.5, aspect=scale[1] / scale[2], origin="upper")
         ax.plot(curve[:, 0] / scale[2], curve[:, 1] / scale[1], "r-", label="Centerline")
         sc = ax.scatter(pts[:, 0] / scale[2], pts[:, 1] / scale[1], c=s_values, cmap="Spectral",
                         label=label, s=pt_size)
@@ -453,16 +409,16 @@ def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 
     plt.show()
 
 
-def plot_binned_ap_results(img, curve, ap_par_binned_S_2d, ap_orth_binned_S_2d,
+def plot_binned_ap_results(img, curve, ap_par_binned_s_2d, ap_orth_binned_s_2d,
                            s_parallel_bin_centers, s_orthogonal_bin_centers,
-                           s_par_orthogonality, s_orth_orthogonality,
+                           s_par_orthogonality, s_orth_orthogonality, figsize=(12, 8),
                            scale=(1, 1, 1), unit="px", savefig="", dpi=200):
-    fig = plt.figure(figsize=(10, 8))
+    fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(2, 2, height_ratios=[7, 1.5], width_ratios=[1.2, 6.5], wspace=0.1, hspace=0.3)
     ax_left = fig.add_subplot(gs[0, 0])
     ax_left.axvline(1, c="grey", linestyle="--")
     ax_left.axvline(0, c="grey", linestyle="--")
-    ax_left.plot(ap_orth_binned_S_2d, s_orthogonal_bin_centers, "s-", label='Nematic order $S$',
+    ax_left.plot(ap_orth_binned_s_2d, s_orthogonal_bin_centers, "s-", label='Nematic order $S$',
                  color='tab:blue', alpha=0.7)
     ax_left.plot(s_orth_orthogonality, s_orthogonal_bin_centers, "o-", label='Orthogonality',
                  color='tab:orange', alpha=0.7)
@@ -482,7 +438,7 @@ def plot_binned_ap_results(img, curve, ap_par_binned_S_2d, ap_orth_binned_S_2d,
     ax_bottom = fig.add_subplot(gs[1, 1])
     ax_bottom.axhline(0, c="grey", linestyle="--")
     ax_bottom.axhline(1, c="grey", linestyle="--")
-    ax_bottom.plot(s_parallel_bin_centers, ap_par_binned_S_2d, "s-", label='Nematic order $S$',
+    ax_bottom.plot(s_parallel_bin_centers, ap_par_binned_s_2d, "s-", label='Nematic order $S$',
                    color='tab:blue', alpha=0.7)
     ax_bottom.plot(s_parallel_bin_centers, s_par_orthogonality, "o-", label='Orthogonality',
                    color='tab:orange', alpha=0.7)
@@ -886,8 +842,9 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
     napari.run()
 
 
-def view_colored_mesh(mesh, vert_colors="red", mesh_shading="flat", mesh_opacity=1.0, img=None, scale=None,
-                      img_opacity=1.0, cmap_img="green", color_override=None, mesh_blending="opaque"):
+def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity=1.0, img=None, scale=None,
+                      img_opacity=1.0, cmap_img="green", color_override=None, mesh_blending="opaque", markers=None,
+                      marker_colors="yellow", marker_size=5):
     print(">> Rendering colored mesh...")
 
     if type(vert_colors) == str:
@@ -904,10 +861,50 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="flat", mesh_opacity
     viewer = napari.Viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
-        # Reduce mesh opacity for better image visibility, can be changed in Napari
         mesh_opacity *= 0.8
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=vert_colors, shading=mesh_shading,
                        opacity=mesh_opacity, blending=mesh_blending)
+    if markers is not None:
+        viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
+                          face_color=marker_colors, border_color=marker_colors, size=marker_size)
+
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
+def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="none", mesh_opacity=1.0, img=None,
+                               scale=None, img_opacity=1.0, cmap_img="green", color_override_list=None,
+                               mesh_blending="opaque", markers=None,
+                               marker_colors="yellow", marker_size=5):
+    if color_override_list is None:
+        color_override_list = [None for _ in range(len(mesh_list))]
+    if vert_colors_list is None:
+        vert_colors_list = ["red" for _ in range(len(mesh_list))]
+    print(">> Rendering colored mesh...")
+    viewer = napari.Viewer()
+    if img is not None:
+        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
+        mesh_opacity *= 0.8
+    for mesh, vert_colors, color_override in zip(mesh_list, vert_colors_list, color_override_list):
+        if type(vert_colors) == str:
+            vert_colors = np.tile(np.array(pltcolors.to_rgb(vert_colors)), (mesh.vertices.shape[0], 1))
+        else:
+            if type(vert_colors[0]) == str:
+                vert_colors = np.array([pltcolors.to_rgb(c) for c in vert_colors])
+            else:
+                vert_colors = np.array(
+                    [tuple(int(hex_code.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)) for hex_code in
+                     vert_colors])
+        if color_override is not None:
+            vert_colors = color_override.copy()
+            vert_colors[:, 3] = 1.0
+
+        viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=vert_colors, shading=mesh_shading,
+                           opacity=mesh_opacity, blending=mesh_blending)
+    if markers is not None:
+        viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
+                          face_color=marker_colors, border_color=marker_colors, size=marker_size)
+
     viewer.dims.ndisplay = 3
     napari.run()
 
@@ -976,11 +973,15 @@ def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=
 
 def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=None, edge_width=0.3,
                                   vec_length=10, vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
-                                  vector_style="line", img=None, scale=None, img_opacity=0.5):
+                                  vector_style="line", img=None, scale=None, img_opacity=0.5, mesh=None,
+                                  mesh_shading="flat", mesh_blending="opaque"):
     print(">> Rendering 3D vector field...")
     viewer = napari.Viewer()
     if img is not None and scale is not None:
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip")
+    if mesh is not None:
+        viewer.add_surface((mesh.vertices, mesh.faces), shading=mesh_shading, opacity=1.0,
+                           blending=mesh_blending)
     if verts is not None and verts_colors is not None:
         viewer.add_points(
             data=verts,
@@ -1049,7 +1050,7 @@ def view_mesh_dir_field(mesh_list, directors, vec_colors, verts=None, verts_colo
 def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20, vec_edge_width=None,
                                 mesh_vert_colors="red", vec_opacity=1.0, vector_style="line",
                                 mesh_blending="opaque", mesh_color_override=None, mesh_opacity=1.0,
-                                mesh_shading="flat"):
+                                mesh_shading="none", markers=None, marker_colors="yellow", marker_size=5):
     print(">> Rendering mesh and colored vertices...")
     vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
 
@@ -1083,6 +1084,9 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
         opacity=vec_opacity,
         vector_style=vector_style
     )
+    if markers is not None:
+        viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
+                          face_color=marker_colors, border_color=marker_colors, size=marker_size)
     viewer.dims.ndisplay = 3
     napari.run()
 

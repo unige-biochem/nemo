@@ -26,6 +26,7 @@ from scripts.visuals import plot_dist_kymograph, plot_flattened_neighborhood, pl
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 from sklearn.decomposition import PCA
+from skimage.morphology import medial_axis
 
 
 #################
@@ -192,10 +193,8 @@ def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_sc
             xscale = 1 / float(xres[0] / xres[1])
             yscale = 1 / float(yres[0] / yres[1])
             print(f"Found xscale = {xscale}, yscale = {yscale} !")
-            xyres_found = True
         except:
             xscale, yscale = 1, 1
-            xyres_found = False
             print(f"XY scaling absent... using default {xscale, yscale} instead !")
 
         # ======== Z resolution ========
@@ -204,11 +203,8 @@ def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_sc
                                 line.startswith("spacing=")).split('=')[1])
             print(f"Found zscale = {zscale} !")
         except:
-            if xyres_found:
-                zscale = np.average([yscale, xscale]) * np.average(img_dim[1:]) / img_dim[0]
-            else:
-                zscale = np.average(img_dim[1:]) / img_dim[0]
-            print(f"Z spacing absent... estimating {zscale} !")
+            zscale = 1.0
+            print(f"Z spacing absent... using default {zscale} instead !")
         if recalc_z:
             zscale = np.average([yscale, xscale]) * np.average(img_dim[1:]) / img_dim[0]
             print(f"Recalculated z spacing as {zscale} !")
@@ -279,7 +275,7 @@ def yen_thresh(img):
     return thresh_val
 
 
-def thresh_img(img, thresh, inverse=True):
+def thresh_img(img, thresh, inverse=True, keep_values_above=False):
     print(f">> Applying threshold {thresh}...")
     img_thresh = np.copy(img)
     if inverse:
@@ -287,7 +283,8 @@ def thresh_img(img, thresh, inverse=True):
     else:
         mask = img > thresh
     img_thresh[mask] = 0
-    img_thresh[~mask] = 1
+    if not keep_values_above:
+        img_thresh[~mask] = 1
     return img_thresh
 
 
@@ -759,6 +756,113 @@ def create_zstack(values, xcords, ycords, grid_n=None):
     return z_stack
 
 
+def find_medial_axis(img, scale=(1, 1, 1)):
+    medial_axis_raw = np.argwhere(medial_axis(img))
+    medial_axis_scaled = medial_axis_raw[:, [1, 0]] * scale[1:]
+    return medial_axis_scaled
+
+
+def spline_fit_curve(curve, order_k, num_pts, smooth, sample_interv, start_u, end_u):
+    from scipy.interpolate import splprep, splev
+    x = curve[::sample_interv, 0]
+    y = curve[::sample_interv, 1]
+    tck = splprep([x, y], s=smooth, k=order_k)[0]
+    curve_fitted = np.array(splev(np.linspace(start_u, end_u, num_pts), tck)).T
+    return curve_fitted
+
+
+def find_pca_axes(img):
+    non_zero_indices = np.column_stack(np.where(img > 0))
+    center = np.mean(non_zero_indices, axis=0)
+    normalized_points = non_zero_indices - center
+    pca = PCA(n_components=2)
+    pca.fit(normalized_points)
+    axes = pca.components_
+    return axes, center
+
+
+def draw_pca_curve(pca_center, pca_axes, dimensions=(1, 1, 1), scale=(1, 1, 1)):
+    start_point_curve = pca_center - np.max(dimensions[1:]) / 2 * pca_axes[0]
+    end_point_curve = pca_center + np.max(dimensions[1:]) / 2 * pca_axes[0]
+    start_point_curve = start_point_curve[[1, 0]]
+    end_point_curve = end_point_curve[[1, 0]]
+    initial_curve_n = int(
+        np.max([end_point_curve[1] - start_point_curve[1], end_point_curve[0] - start_point_curve[0]]))
+    initial_curve_xpts = np.linspace(start_point_curve[0], end_point_curve[0], initial_curve_n)
+    initial_curve_ypts = np.linspace(start_point_curve[1], end_point_curve[1], initial_curve_n)
+    curve = np.column_stack((initial_curve_ypts, initial_curve_xpts))
+    curve = curve * scale[1:]
+    return curve
+
+
+def proj2curve(points, curve):
+    tree = KDTree(curve)
+    dists, idxs = tree.query(points)
+    closest_points = curve[idxs]
+    s_parallel = np.cumsum(np.sqrt(np.sum(np.diff(curve, axis=0) ** 2, axis=1)))
+    s_parallel = np.insert(s_parallel, 0, 0)
+    s_proj = s_parallel[idxs]
+    s_orthogonal = np.linalg.norm(points - closest_points, axis=1)
+    return s_proj, s_orthogonal
+
+
+def filter_curve_inside_shape(curve, image, thresh=0.5, scale=(1, 1)):
+    x_int = np.clip(np.round(curve[:, 0] / scale[0]).astype(int), 0, image.shape[1] - 1)
+    y_int = np.clip(np.round(curve[:, 1] / scale[1]).astype(int), 0, image.shape[0] - 1)
+    mask = image[y_int, x_int] > thresh
+    return curve[mask]
+
+
+def bin_array_with_indices(values, n_bins):
+    sorted_indices = np.argsort(values)
+    binned_indices = np.array_split(sorted_indices, n_bins)
+    return binned_indices
+
+
+def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
+                  nematic_weights=None):
+    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
+                                                                  bins_idxs=ap_par_binned_idxs, weights=nematic_weights)
+    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
+                                                                    bins_idxs=ap_orth_binned_idxs,
+                                                                    weights=nematic_weights)
+    nematic_results = ap_par_binned_S_2d, ap_par_binned_n_2d, ap_orth_binned_S_2d, ap_orth_binned_n_2d
+    ap_par_binned_dirs = []
+    ap_orth_binned_dirs = []
+    s_parallel_bin_centers = []
+    s_orthogonal_bin_centers = []
+    s_par_orthogonality = []
+    s_orth_orthogonality = []
+    curve_tangents = np.diff(curve, axis=0)
+    curve_tangents /= np.linalg.norm(curve_tangents, axis=1, keepdims=True)
+    curve_pt_tree = KDTree(curve[:-1])
+
+    for i_, parallel_bin_idxs in enumerate(ap_par_binned_idxs):
+        ap_par_binned_dirs.append(directors[parallel_bin_idxs])
+        s_parallel_bin_centers.append(np.mean(s_parallel[parallel_bin_idxs], axis=0))
+        _, indices = curve_pt_tree.query(directors[:, :2][parallel_bin_idxs])
+        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
+        local_normals = np.mean(local_normals, axis=0)
+        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
+        s_par_orthogonality.append(np.abs(np.dot(ap_par_binned_n_2d[i_], local_normals)))
+
+    for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
+        ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
+        s_orthogonal_bin_centers.append(np.mean(s_orthogonal[orthogonal_bin_idxs], axis=0))
+        _, indices = curve_pt_tree.query(directors[:, :2][orthogonal_bin_idxs])
+        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
+        local_normals = np.mean(local_normals, axis=0)
+        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
+        s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
+    s_parallel_bin_centers = np.array(s_parallel_bin_centers)
+    s_orthogonal_bin_centers = np.array(s_orthogonal_bin_centers)
+    s_par_orthogonality = np.array(s_par_orthogonality)
+    s_orth_orthogonality = np.array(s_orth_orthogonality)
+    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality
+    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality
+    return parallel_results, orthogonal_results, nematic_results
+
+
 #############################################
 # 2D ORIENTATION & NEMATIC ANALYSIS MODULES #
 #############################################
@@ -881,84 +985,6 @@ def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
     neigh_idxs = coord_search_neighbours(directors_2d[:, :2], k=num_neigh_nem, debug=debug)
     S_2d, n_2d = avg_2d_nem_tens(directors=directors_2d, neigh_idxs=neigh_idxs, debug=debug)
     return theta_all_deg, theta_masked_rad, S_2d, n_2d, X, Y, directors_2d
-
-
-def find_pca_axes(img):
-    non_zero_indices = np.column_stack(np.where(img > 0))
-    center = np.mean(non_zero_indices, axis=0)
-    normalized_points = non_zero_indices - center
-    pca = PCA(n_components=2)
-    pca.fit(normalized_points)
-    axes = pca.components_
-    return axes, center
-
-
-def proj2curve(points, curve):
-    tree = KDTree(curve)
-    dists, idxs = tree.query(points)
-    closest_points = curve[idxs]
-    s_parallel = np.cumsum(np.sqrt(np.sum(np.diff(curve, axis=0) ** 2, axis=1)))
-    s_parallel = np.insert(s_parallel, 0, 0)
-    s_proj = s_parallel[idxs]
-    s_orthogonal = np.linalg.norm(points - closest_points, axis=1)
-    return s_proj, s_orthogonal
-
-
-def filter_curve_inside_shape(curve, image, thresh=0.5, scale=(1, 1)):
-    x_int = np.clip(np.round(curve[:, 0] / scale[0]).astype(int), 0, image.shape[1] - 1)
-    y_int = np.clip(np.round(curve[:, 1] / scale[1]).astype(int), 0, image.shape[0] - 1)
-    mask = image[y_int, x_int] > thresh
-    return curve[mask]
-
-
-def bin_array_with_indices(values, n_bins):
-    sorted_indices = np.argsort(values)
-    binned_indices = np.array_split(sorted_indices, n_bins)
-    return binned_indices
-
-
-def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
-                  nematic_weights=None):
-    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
-                                                                  bins_idxs=ap_par_binned_idxs, weights=nematic_weights)
-    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
-                                                                    bins_idxs=ap_orth_binned_idxs,
-                                                                    weights=nematic_weights)
-    nematic_results = ap_par_binned_S_2d, ap_par_binned_n_2d, ap_orth_binned_S_2d, ap_orth_binned_n_2d
-    ap_par_binned_dirs = []
-    ap_orth_binned_dirs = []
-    s_parallel_bin_centers = []
-    s_orthogonal_bin_centers = []
-    s_par_orthogonality = []
-    s_orth_orthogonality = []
-    curve_tangents = np.diff(curve, axis=0)
-    curve_tangents /= np.linalg.norm(curve_tangents, axis=1, keepdims=True)
-    curve_pt_tree = KDTree(curve[:-1])
-
-    for i_, parallel_bin_idxs in enumerate(ap_par_binned_idxs):
-        ap_par_binned_dirs.append(directors[parallel_bin_idxs])
-        s_parallel_bin_centers.append(np.mean(s_parallel[parallel_bin_idxs], axis=0))
-        _, indices = curve_pt_tree.query(directors[:, :2][parallel_bin_idxs])
-        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
-        local_normals = np.mean(local_normals, axis=0)
-        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
-        s_par_orthogonality.append(np.abs(np.dot(ap_par_binned_n_2d[i_], local_normals)))
-
-    for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
-        ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
-        s_orthogonal_bin_centers.append(np.mean(s_orthogonal[orthogonal_bin_idxs], axis=0))
-        _, indices = curve_pt_tree.query(directors[:, :2][orthogonal_bin_idxs])
-        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
-        local_normals = np.mean(local_normals, axis=0)
-        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
-        s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
-    s_parallel_bin_centers = np.array(s_parallel_bin_centers)
-    s_orthogonal_bin_centers = np.array(s_orthogonal_bin_centers)
-    s_par_orthogonality = np.array(s_par_orthogonality)
-    s_orth_orthogonality = np.array(s_orth_orthogonality)
-    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality
-    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality
-    return parallel_results, orthogonal_results, nematic_results
 
 
 ##############################################
