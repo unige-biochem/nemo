@@ -103,8 +103,8 @@ def sharp_blue_red(min_val, intermediate_val, max_val):
 def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(18, 3), slice_line_alpha=0.8,
              cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None,
              slice_depth=10, mesh_thick=0.1, mesh_alpha=0.3, thresh_alpha=0.8, mesh_colors=None,
-             cmap_label="Fluorescence Intensity (a.u.)", hide_img=False, title_digit_precision=2,
-             manual_vminvmax=None, savefig=""):
+             cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
+             manual_vminvmax=None, savefig="", hidefig=False):
     print(">> Plotting slices...")
     if z_i is None:
         z_i = img.shape[0] // 2
@@ -201,14 +201,14 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(18, 3), sl
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    if not hide_img:
+    if not hidefig:
         plt.show()
     else:
         plt.close()
 
 
 def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, figsize=(15, 8), savefig="", dpi=200,
-                     cmap_label="Signal (a.u.)", manual_vminmax=None):
+                     cmap_label="Signal (a.u.)", manual_vminmax=None, hidefig=False):
     print("Plotting max projection of coloured points...")
     if colors is None:
         print(f"No colors given, assuming uniform color!")
@@ -249,11 +249,14 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, fig
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, savefig="", dpi=200, density=True,
-              bins=None):
+              bins=None, hidefig=False):
     print("Plotting histogram...")
     plt.figure(figsize=figsize)
     plt.title(title)
@@ -268,11 +271,15 @@ def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, sa
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_matrix(matrix, unit="px", colorbar=False, cmap="twilight", figsize=(4, 3), savefig="", dpi=200,
-                title=None, origin="upper", cmap_limits=None, cmap_label="", remove_axes=False, scale=(1, 1, 1)):
+                title=None, origin="upper", cmap_limits=None, cmap_label="", remove_axes=False, scale=(1, 1, 1),
+                hidefig=False):
     print(">> Plotting a matrix...")
     fig, ax = plt.subplots(figsize=figsize)
     if cmap_limits is not None:
@@ -298,13 +305,16 @@ def plot_matrix(matrix, unit="px", colorbar=False, cmap="twilight", figsize=(4, 
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figsize=(4, 3),
                         savefig="", dpi=200, vec_colors=None, matrix_cmap="Greys_r", vec_cmap="Spectral",
                         cbar_vector_label="", cbar_matrix_label="", matrix_origin="upper", unit="px",
-                        remove_axes=False, scale=(1, 1, 1), img_cmap_limits=None, vec_cmap_limits=None):
+                        remove_axes=False, scale=(1, 1, 1), img_cmap_limits=None, vec_cmap_limits=None, hidefig=False):
     fig, ax = plt.subplots(figsize=figsize)
     if title is not None:
         plt.title(title)
@@ -347,11 +357,14 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figs
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_idxs, ap_orth_binned_idxs,
-                       cmap="tab20", unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2):
+                       cmap="tab20", unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2, hidefig=False):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     for ax, dirs, idxs, title in zip(
@@ -377,11 +390,14 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 1, 1), unit="px", savefig="",
-                           dpi=200, figsize=(16, 6), pt_size=10):
+                           dpi=200, figsize=(16, 6), pt_size=10, hidefig=False):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for ax, s_values, title, label in zip(
             axes,
@@ -406,26 +422,23 @@ def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_binned_ap_results(img, curve, ap_par_binned_s_2d, ap_orth_binned_s_2d,
-                           s_parallel_bin_centers, s_orthogonal_bin_centers,
-                           s_par_orthogonality, s_orth_orthogonality, figsize=(12, 8),
-                           scale=(1, 1, 1), unit="px", savefig="", dpi=200):
+def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, ap_orth_binned_s_2d_weighted,
+                                      ap_par_binned_s_2d_unweighted, ap_orth_binned_s_2d_unweighted,
+                                      s_parallel_bin_centers, s_orthogonal_bin_centers,
+                                      s_par_orthogonality_weighted, s_orth_orthogonality_weighted,
+                                      s_par_orthogonality_unweighted, s_orth_orthogonality_unweighted, figsize=(14, 8),
+                                      scale=(1, 1, 1), unit="px", savefig="", dpi=200, hidefig=False):
     fig = plt.figure(figsize=figsize)
-    gs = gridspec.GridSpec(2, 2, height_ratios=[7, 1.5], width_ratios=[1.2, 6.5], wspace=0.1, hspace=0.3)
-    ax_left = fig.add_subplot(gs[0, 0])
-    ax_left.axvline(1, c="grey", linestyle="--")
-    ax_left.axvline(0, c="grey", linestyle="--")
-    ax_left.plot(ap_orth_binned_s_2d, s_orthogonal_bin_centers, "s-", label='Nematic order $S$',
-                 color='tab:blue', alpha=0.7)
-    ax_left.plot(s_orth_orthogonality, s_orthogonal_bin_centers, "o-", label='Orthogonality',
-                 color='tab:orange', alpha=0.7)
-    ax_left.invert_xaxis()
-    ax_left.set_ylabel(f"A-P ⊥ coordinate ({unit})")
-    ax_left.set_xlim(1.1, -0.1)
-    ax_img = fig.add_subplot(gs[0, 1])
+    gs = gridspec.GridSpec(2, 2, width_ratios=[4, 6], height_ratios=[1, 1], wspace=0.2, hspace=0.3)
+
+    # Left: Full height image
+    ax_img = fig.add_subplot(gs[:, 0])
     ax_img.imshow(img, cmap='gray', origin='upper', aspect=scale[1] / scale[2])
     ax_img.scatter(curve[:, 0] / scale[2], curve[:, 1] / scale[1], s=2, c=np.linspace(0, 1, len(curve)),
                    cmap="Spectral", label="Central line of Elongation")
@@ -435,42 +448,72 @@ def plot_binned_ap_results(img, curve, ap_par_binned_s_2d, ap_orth_binned_s_2d,
     ax_img.set_xticklabels(np.round(ax_img.get_xticks() * scale[2], 2))
     ax_img.set_yticks(np.linspace(0, img.shape[0], 5))
     ax_img.set_yticklabels(np.round(ax_img.get_yticks() * scale[1], 2))
-    ax_bottom = fig.add_subplot(gs[1, 1])
-    ax_bottom.axhline(0, c="grey", linestyle="--")
-    ax_bottom.axhline(1, c="grey", linestyle="--")
-    ax_bottom.plot(s_parallel_bin_centers, ap_par_binned_s_2d, "s-", label='Nematic order $S$',
-                   color='tab:blue', alpha=0.7)
-    ax_bottom.plot(s_parallel_bin_centers, s_par_orthogonality, "o-", label='Orthogonality',
-                   color='tab:orange', alpha=0.7)
-    ax_bottom.set_xlabel(f"A-P || coordinate ({unit})")
-    ax_bottom.set_ylim(-0.1, 1.1)
-    fig.add_subplot(gs[1, 0]).axis("off")
 
-    handles = []
-    labels = []
-    for ax in [ax_left, ax_bottom, ax_img]:
-        h, l = ax.get_legend_handles_labels()
-        handles.extend(h)
-        labels.extend(l)
-    unique = list(OrderedDict(zip(labels, handles)).items())
-    labels, handles = zip(*unique)
-    fig.legend(handles, labels,
-               loc='lower left',
-               bbox_to_anchor=(0.05, 0.1),
-               fontsize=9,
-               frameon=True,
-               title="Legend",
-               title_fontsize=10)
+    # Bottom right: parallel profile
+    ax_parallel = fig.add_subplot(gs[0, 1])
+    ax_parallel.grid(color="grey", linestyle="--", alpha=0.5)
+    ax_br_ax2 = ax_parallel.twinx()
+    ax_parallel.axhline(1, c="lightskyblue", linestyle="--", alpha=0.5)
+    ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_weighted, "s-", label='Weighted by $AR-1$',
+                     color='lightskyblue', alpha=0.7)
+    ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_unweighted, "x--", label='Normalised',
+                     color='lightskyblue', alpha=0.7)
+    ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_weighted, "s-", label='Weighted by $AR-1$',
+                   color='tab:orange', alpha=0.7)
+    ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_unweighted, "x--", label='Normalised',
+                   color='tab:orange', alpha=0.7)
+    ax_parallel.set_xlabel(f"A-P || coordinate ({unit})")
+    ax_parallel.set_ylabel('Nematic order $S$', color='lightskyblue')
+    ax_parallel.tick_params(axis='y', colors='lightskyblue')
+    ax_br_ax2.set_ylabel('Orthogonality', color='tab:orange')
+    ax_br_ax2.tick_params(axis='y', colors='tab:orange')
+    ax_br_ax2.set_ylim(-0.05, 1.05)
+
+    # Top right: orthogonal profile
+    ax_orthogonal = fig.add_subplot(gs[1, 1])
+    ax_orthogonal.grid(color="lightskyblue", linestyle="--", alpha=0.5)
+    ax_tr_ax2 = ax_orthogonal.twinx()
+    ax_orthogonal.axhline(1, c="lightskyblue", linestyle="--", alpha=0.5)
+    ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_weighted, "s-",
+                       label='Weighted by $AR-1$', color='lightskyblue', alpha=0.7)
+    ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_unweighted, "x--",
+                       label='Normalised', color='lightskyblue', alpha=0.7)
+    ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_weighted, "o-", label='Weighted by $AR-1$',
+                   color='tab:orange', alpha=0.7)
+    ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_unweighted, "x--", label='Normalised',
+                   color='tab:orange', alpha=0.7)
+    ax_orthogonal.set_xlabel(f"A-P ⊥ coordinate ({unit})")
+    ax_orthogonal.set_ylabel('Nematic order $S$', color='lightskyblue')
+    ax_orthogonal.tick_params(axis='y', colors='lightskyblue')
+    ax_tr_ax2.set_ylabel('Orthogonality', color='tab:orange')
+    ax_tr_ax2.tick_params(axis='y', colors='tab:orange')
+    ax_tr_ax2.set_ylim(-0.05, 1.05)
+
+    ax_parallel.set_ylim(bottom=0.0)
+    ax_orthogonal.set_ylim(bottom=0.0)
+
+    from matplotlib.lines import Line2D
+
+    custom_lines = [
+        Line2D([0], [0], linestyle='-', marker='s', color='white', label='Weighted by $AR-1$'),
+        Line2D([0], [0], linestyle='--', marker='x', color='white', label='Normalised'),
+    ]
+
+    fig.legend(handles=custom_lines, loc='upper center', ncol=2, frameon=True, bbox_to_anchor=(0.7, 0.95))
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_mercator_project(mercator_x, mercator_y, intensities, hexview=True, ptview=False, hexgridsize=200, savefig="",
                           cmap="Greens", mercator_x_or=None, mercator_y_or=None, scale_factor=1.0, vec_freq=1,
                           figsize=(8, 4), arrow_alpha=1.0, ptsize=2, alpha=1.0, dpi=200, invert_y_axis=False,
-                          aspect=2, cmap_label="Intensity Signal (a.u.)", manual_vminmax=None):
+                          aspect=2, cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, hidefig=False):
     print(">> Plotting the mercator projection...")
     if manual_vminmax is None:
         vmin, vmax = intensities.min(), intensities.max()
@@ -498,10 +541,13 @@ def plot_mercator_project(mercator_x, mercator_y, intensities, hexview=True, ptv
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figsize=(3, 3)):
+def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figsize=(3, 3), hidefig=False):
     print(">> Plotting the flattened neighborhood...")
     plt.figure(figsize=figsize)
     plt.scatter(local_2d_projection[:, 0], local_2d_projection[:, 1], c=neighbors_intensities, cmap='Greys_r', s=50)
@@ -512,11 +558,14 @@ def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figs
     plt.ylabel('Local y')
     plt.gca().set_aspect("equal")
     plt.title('Flattened Neighborhood')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_interp_grid(grid_x, grid_y, grid_z, points, theta=None, hide_pts=False, figsize=(4, 3),
-                     linelength=2):
+                     linelength=2, hidefig=False):
     print(">> Plotting the interpolated flattened neighborhood...")
     plt.figure(figsize=figsize)
     contour = plt.contourf(grid_x, grid_y, grid_z, levels=100, cmap='Greys_r')
@@ -536,10 +585,13 @@ def plot_interp_grid(grid_x, grid_y, grid_z, points, theta=None, hide_pts=False,
     plt.yticks([])
     plt.xlabel('Local X')
     plt.ylabel('Local y')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_vector_field_styles(x, y, u, v, defect, savefigpath="", figsize=(15, 5), dpi=200):
+def plot_vector_field_styles(x, y, u, v, defect, savefigpath="", figsize=(15, 5), dpi=200, hidefig=False):
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     print(">> Plotting the vector field with(out) defect...")
     axes[0].quiver(x, y, u, v, color='white', scale=20, pivot='middle', headaxislength=0)
@@ -558,10 +610,13 @@ def plot_vector_field_styles(x, y, u, v, defect, savefigpath="", figsize=(15, 5)
     if savefigpath != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefigpath, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=200):
+def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=200, hidefig=False):
     plt.figure(figsize=figsize)
     print(">> Plotting the vector field with(out) defect...")
     plt.quiver(x, y, u, v, color='white', scale=20, pivot='middle', headaxislength=0)
@@ -570,10 +625,13 @@ def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=20
     if savefigpath != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefigpath, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_dist_kymograph(distances, plot_mask, plot_all, cmap, figsize, unit, savefig="", dpi=200):
+def plot_dist_kymograph(distances, plot_mask, plot_all, cmap, figsize, unit, savefig="", dpi=200, hidefig=False):
     fig, axes = plt.subplots(2, 1, figsize=figsize)
 
     data_min = np.nanmin(plot_mask)
@@ -594,14 +652,17 @@ def plot_dist_kymograph(distances, plot_mask, plot_all, cmap, figsize, unit, sav
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, veclength=10, freq=1, figsize=(8, 6),
                    view_init=None, title=None, savefig="", dpi=200, veccolor="red", cmap_label="cmap_label",
                    cmap="Spectral", show_axes=True, xlim=None, ylim=None, zlim=None, aspect="equal", hide_cmap=False,
                    marker=None, pt_label="marker_label", pt_size=100, pt_style="o", pt_color="yellow", pt_alpha=1.0,
-                   manual_vminmax=None):
+                   manual_vminmax=None, hidefig=False):
     print(">> Plotting director field...")
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection='3d')
@@ -664,10 +725,14 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize=(6, 6), savefig="", dpi=200, bins=30):
+def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize=(6, 6), savefig="", dpi=200, bins=30,
+                    hidefig=False):
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=figsize)
     counts, bin_edges = np.histogram(angles_deg, bins=bins, range=(-90, 90), density=True)
     bin_centers_rad = np.radians((bin_edges[:-1] + bin_edges[1:]) / 2)
@@ -683,7 +748,10 @@ def plot_polar_hist(angles_deg, title="Polar Histogram of Theta Angles", figsize
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 def animate_img_slices(img, scale, unit, gifpath, gifsuffix, time_spacing=0.1, cmap="Greens", dpi=100,
@@ -745,11 +813,10 @@ def animate_img_slices(img, scale, unit, gifpath, gifsuffix, time_spacing=0.1, c
         for file in temp_files:
             os.remove(file)
         shutil.rmtree(temp_path, ignore_errors=True)
-
     print("Animation complete !")
 
 
-def plot_cmap(cmap_custom, distances, midpoint, savefigpath="", dpi=200):
+def plot_cmap(cmap_custom, distances, midpoint, savefigpath="", dpi=200, hidefig=False):
     print(">> Visualising the cmap...")
     min_val = np.min(distances)
     max_val = np.max(distances)
@@ -764,7 +831,10 @@ def plot_cmap(cmap_custom, distances, midpoint, savefigpath="", dpi=200):
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefigpath, dpi=dpi, bbox_inches='tight')
-    plt.show()
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
 
 
 #####################

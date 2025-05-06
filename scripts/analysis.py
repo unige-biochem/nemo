@@ -256,6 +256,131 @@ def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_sc
     return img_raw, img_dim, img_scale, img_unit
 
 
+def get_tiff_scaling(tif):
+    # ======== XY resolution ========
+    try:
+        xres = tif.pages[0].tags['XResolution'].value
+        yres = tif.pages[0].tags['YResolution'].value
+        xscale = 1 / float(xres[0] / xres[1])
+        yscale = 1 / float(yres[0] / yres[1])
+        print(f"Found xscale = {xscale}, yscale = {yscale} !")
+    except:
+        xscale, yscale = 1.0, 1.0
+        print(f"XY scaling absent... using default {xscale, yscale} instead !")
+
+    # ======== Z resolution ========
+    try:
+        zscale = float(next(line for line in tif.pages[0].tags.get('ImageDescription', None).value.splitlines() if
+                            line.startswith("spacing=")).split('=')[1])
+        print(f"Found zscale = {zscale} !")
+    except:
+        zscale = 1.0
+        print(f"Z spacing absent... using default {zscale} instead !")
+    img_scale = (zscale, yscale, xscale)
+    return img_scale
+
+
+def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_unit=None, custom_scaling=None,
+                     reduce_xy=1, reduce_z=1):
+    print(f">> Importing {path}...")
+    if not os.path.exists(path):
+        print(f"[!] Image does not exist, aborting !")
+        return None
+
+    with TiffFile(path) as tif:
+        series = tif.series[0]
+        axes = series.axes
+        shape = series.shape
+        axis_map = {ax: i for i, ax in enumerate(axes)}
+        print(f"Found {series.ndim}D {axes} Hyperstack | {shape} | {round(series.nbytes / 1e6, 2)} MB !")
+
+        # ======== Load Scaling ========
+        img_scale = get_tiff_scaling(tif)
+        print(f"Found image scale = {img_scale} !")
+
+        # ======== Load Unit ========
+        img_unit = "px"
+        if custom_unit is not None:
+            print(f">> Overwriting unit with {custom_unit}...")
+            img_unit = custom_unit
+
+        # ======== Extract single z-stack ========
+        T = shape[axis_map['T']] if 'T' in axis_map else 1
+        Z = shape[axis_map['Z']] if 'Z' in axis_map else 1
+        C = shape[axis_map['C']] if 'C' in axis_map else 1
+
+        if t_sel_idx >= T or c_sel_idx >= C or t_sel_idx < 0 or c_sel_idx < 0:
+            print(
+                f"Invalid selected time point ({t_sel_idx} / max {T - 1}) or channel ({c_sel_idx} / max {C - 1}), aborting !")
+            return None
+        print(f">> Selecting Z-Stack at T={t_sel_idx} C={c_sel_idx} ...")
+
+        strides = {
+            'T': Z * C if 'T' in axis_map else 0,
+            'Z': C if 'Z' in axis_map else 0,
+            'C': 1 if 'C' in axis_map else 0,
+        }
+
+        z_stack = []
+        for z_idx in range(Z):
+            flat_index = 0
+            if 'T' in axis_map:
+                flat_index += t_sel_idx * strides['T']
+            if 'Z' in axis_map:
+                flat_index += z_idx * strides['Z']
+            if 'C' in axis_map:
+                flat_index += c_sel_idx * strides['C']
+            z_stack.append(tif.pages[flat_index].asarray())
+
+        img_raw = np.stack(z_stack, axis=0)
+        img_dim = img_raw.shape
+
+    # ======== Optional: Scaling Override ========
+    if custom_scaling is not None:
+        print(f">> Overwriting scaling with {custom_scaling}...")
+        img_scale = custom_scaling
+
+    # ======== Reduce resolution if needed by averaging ========
+    if reduce_z > 1 or reduce_xy > 1:
+        if reduce_xy > 1:
+            print(f">> Reducing XY resolution by averaging {reduce_xy} pixels...")
+            trimmed_y = (img_dim[1] // reduce_xy) * reduce_xy
+            trimmed_x = (img_dim[2] // reduce_xy) * reduce_xy
+            img_raw = img_raw[:, :trimmed_y, :trimmed_x]
+            new_shape = (
+                img_dim[0],
+                trimmed_y // reduce_xy,
+                reduce_xy,
+                trimmed_x // reduce_xy,
+                reduce_xy,
+            )
+            img_raw = img_raw.reshape(new_shape).mean(axis=(2, 4))
+            img_scale = (img_scale[0], reduce_xy * img_scale[1], reduce_xy * img_scale[2])
+        img_dim = img_raw.shape
+        if reduce_z > 1:
+            print(f">> Reducing Z resolution by averaging {reduce_z} pixels...")
+            trimmed_z = (img_dim[0] // reduce_z) * reduce_z
+            img_raw = img_raw[:trimmed_z, :, :]
+            new_shape = (
+                trimmed_z // reduce_z,
+                reduce_z,
+                img_dim[1],
+                img_dim[2],
+            )
+            img_raw = img_raw.reshape(new_shape).mean(axis=1)
+            img_scale = (reduce_z * img_scale[0], img_scale[1], img_scale[2])
+        img_dim = img_raw.shape
+        print(f"Reduced shape = {img_dim} | scale = {img_scale} | size = {round(img_raw.nbytes / 1e6, 2)} MB !")
+
+    # ======== Norm values if needed ========
+    if norm_vals:
+        print(f">> Norming intensities...")
+        img_raw = normalise_range(img_raw)
+
+    print(f"Loaded T={t_sel_idx} C={c_sel_idx} Z-stack ({round(img_raw.nbytes / 1e6, 2)} MB) !")
+    return img_raw, img_dim, img_scale, img_unit
+
+
 def gaussian_blur(img, sigma, renorm):
     if sigma is None:
         img_blur = img
@@ -674,7 +799,7 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 
 
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
-              figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig=""):
+              figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False):
     num_dist = int(num_dist)
     print(f">> Projecting {mode} image intensities on verts using {interp_method} interpolation method...")
     print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}")
@@ -703,17 +828,18 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
                             plot_all=masked_intensities, cmap=cmap,
                             figsize=figsize, unit=unit, savefig=savefig)
     if mode == "max":
-        max_intensity_values = np.max(masked_intensities, axis=1)
+        proj_intensity_values = np.max(masked_intensities, axis=1)
     elif mode == "mean":
-        max_intensity_values = np.mean(masked_intensities, axis=1)
+        proj_intensity_values = np.mean(masked_intensities, axis=1)
     else:
         return None
 
     if return_full:
         return distances, outward_samples, masked_intensities
 
-    max_intensity_values = normalise_range(max_intensity_values)
-    return max_intensity_values
+    if normalise:
+        proj_intensity_values = normalise_range(proj_intensity_values)
+    return proj_intensity_values
 
 
 def mercator_project(pts, ref_point=None, rotate=None, debug=False):
@@ -735,25 +861,31 @@ def mercator_project(pts, ref_point=None, rotate=None, debug=False):
     return mercator_x, mercator_y
 
 
-def create_zstack(values, xcords, ycords, grid_n=None):
+def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_n=None):
     if grid_n is None:
-        grid_n = int(np.sqrt(len(xcords)))
+        grid_n = int(np.sqrt(len(phi_coords)))
     else:
         grid_n = int(grid_n)
     print(f">> Creating z stack of {grid_n} x {grid_n} grid points...")
-    grid_x, grid_y = np.meshgrid(
-        np.linspace(xcords.min(), xcords.max(), grid_n),
-        np.linspace(ycords.min(), ycords.max(), grid_n)
-    )
-    proj_points = np.column_stack((xcords.ravel(), ycords.ravel()))
-    grid_points = np.column_stack((grid_x.ravel(), grid_y.ravel()))
+    phi_coords_fine = np.linspace(phi_coords.min(), phi_coords.max(), grid_n)
+    theta_cords_fine = np.linspace(theta_cords.min(), theta_cords.max(), grid_n)
+    grid_phi, grid_theta = np.meshgrid(phi_coords_fine, theta_cords_fine)
+    proj_points = np.column_stack((phi_coords.ravel(), theta_cords.ravel()))
+    grid_points = np.column_stack((grid_phi.ravel(), grid_theta.ravel()))
     tree = KDTree(proj_points)
     _, nearest_idx = tree.query(grid_points, k=1)
-    z_stack = np.array([
-        np.fliplr(values[i].ravel()[nearest_idx].reshape(grid_x.shape).T)
-        for i in range(values.shape[0])
-    ])
-    return z_stack
+
+    radial_stack = np.empty((values.shape[0], grid_n, grid_n))
+    stack_coords = np.empty((values.shape[0], grid_n, grid_n, 3))
+    phi_grid = np.fliplr(grid_phi.T)
+    theta_grid = np.fliplr(grid_theta.T)
+
+    for i in range(values.shape[0]):
+        radial_stack[i] = np.fliplr(values[i].ravel()[nearest_idx].reshape(grid_phi.shape).T)
+        stack_coords[i, ..., 0] = phi_grid
+        stack_coords[i, ..., 1] = theta_grid
+        stack_coords[i, ..., 2] = projection_radii[i]
+    return radial_stack, stack_coords
 
 
 def find_medial_axis(img, scale=(1, 1, 1)):
@@ -820,19 +952,32 @@ def bin_array_with_indices(values, n_bins):
 
 
 def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
-                  nematic_weights=None):
+                  nematic_weights):
     ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
                                                                   bins_idxs=ap_par_binned_idxs, weights=nematic_weights)
     ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
                                                                     bins_idxs=ap_orth_binned_idxs,
                                                                     weights=nematic_weights)
-    nematic_results = ap_par_binned_S_2d, ap_par_binned_n_2d, ap_orth_binned_S_2d, ap_orth_binned_n_2d
+    ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens_bins(directors=directors,
+                                                                          bins_idxs=ap_par_binned_idxs,
+                                                                          weights=None)
+    ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens_bins(directors=directors,
+                                                                            bins_idxs=ap_orth_binned_idxs,
+                                                                            weights=None)
+
+    nematic_results = (ap_par_binned_S_2d, ap_par_binned_n_2d,
+                       ap_orth_binned_S_2d, ap_orth_binned_n_2d)
+    nematic_results_unweighted = (ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw,
+                                  ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw)
     ap_par_binned_dirs = []
     ap_orth_binned_dirs = []
     s_parallel_bin_centers = []
     s_orthogonal_bin_centers = []
     s_par_orthogonality = []
     s_orth_orthogonality = []
+    s_par_orthogonality_unw = []
+    s_orth_orthogonality_unw = []
+
     curve_tangents = np.diff(curve, axis=0)
     curve_tangents /= np.linalg.norm(curve_tangents, axis=1, keepdims=True)
     curve_pt_tree = KDTree(curve[:-1])
@@ -845,6 +990,7 @@ def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_or
         local_normals = np.mean(local_normals, axis=0)
         local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
         s_par_orthogonality.append(np.abs(np.dot(ap_par_binned_n_2d[i_], local_normals)))
+        s_par_orthogonality_unw.append(np.abs(np.dot(ap_par_binned_n_2d_unw[i_], local_normals)))
 
     for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
         ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
@@ -854,13 +1000,17 @@ def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_or
         local_normals = np.mean(local_normals, axis=0)
         local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
         s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
+        s_orth_orthogonality_unw.append(np.abs(np.dot(ap_orth_binned_n_2d_unw[i_], local_normals)))
     s_parallel_bin_centers = np.array(s_parallel_bin_centers)
     s_orthogonal_bin_centers = np.array(s_orthogonal_bin_centers)
     s_par_orthogonality = np.array(s_par_orthogonality)
     s_orth_orthogonality = np.array(s_orth_orthogonality)
-    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality
-    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality
-    return parallel_results, orthogonal_results, nematic_results
+    s_par_orthogonality_unw = np.array(s_par_orthogonality_unw)
+    s_orth_orthogonality_unw = np.array(s_orth_orthogonality_unw)
+
+    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality, s_par_orthogonality_unw
+    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality, s_orth_orthogonality_unw
+    return parallel_results, orthogonal_results, nematic_results, nematic_results_unweighted
 
 
 #############################################
@@ -919,7 +1069,7 @@ def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
         q_avg = np.average(q[neigh_idxs], axis=1)
     else:
         w = weights[neigh_idxs][..., np.newaxis, np.newaxis]
-        q_avg = np.sum(q[neigh_idxs] * w, axis=1)
+        q_avg = np.average(q[neigh_idxs] * w, axis=1)
     eigvals, eigvecs = np.linalg.eigh(q_avg)
     max_indeces = np.argmax(eigvals, axis=1)
     max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
@@ -949,7 +1099,7 @@ def avg_2d_nem_tens_bins(directors, bins_idxs, debug=False, weights=None):
             q_avg.append(np.average(q[b], axis=0))
         else:
             w = weights[b][:, np.newaxis, np.newaxis]
-            q_avg.append(np.sum(q[b] * w, axis=0))
+            q_avg.append(np.average(q[b] * w, axis=0))
     q_avg = np.stack(q_avg)
     eigvals, eigvecs = np.linalg.eigh(q_avg)
     max_indeces = np.argmax(eigvals, axis=1)

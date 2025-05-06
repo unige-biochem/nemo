@@ -1,8 +1,8 @@
 """
 Example Batch Analysis Script for NEMO, the Nematics & Morphology Toolkit.
+Purpose of this script: Embryo Flattening for Magdalena Schindler (EMBL Heidelberg, Petridou Lab).
 Author: Konstantinos Andreadis
 """
-
 # Import custom scripts
 from scripts import analysis, datahandler, visuals, simulation
 from importlib import reload
@@ -11,51 +11,77 @@ for module in (analysis, datahandler, visuals, simulation):
     reload(module)
 
 # Import python essentials
-import os
+import os, sys
 import numpy as np
 import matplotlib.pyplot as plt
 import trimesh
+import tifffile
+import re, glob
 
-magdalena_root = "/Users/andreadi/Library/CloudStorage/OneDrive-UniversitédeGenève/Academic/Data/4_collaborations/magdalena_embl"
-# magdalena_rel_path = "TP1/C2-CTL_TG_His_lyn_E29_20240423_block4_New-02-0To7-TP1.tif"
-magdalena_rel_path = "TP80/C2-CTL_TG_His_lyn_E29_20240423_block4_New-02-0To7-TP80.tif"
-img_path = os.path.join(magdalena_root, magdalena_rel_path)
+# |-------------------------- USER INPUT --------------------------|
+img_path = "/Users/andreadi/Library/CloudStorage/OneDrive-UniversitédeGenève/Academic/Data/4_collaborations/magdalena_embl/time-lapse/CTL_TG_His_lyn_E25_20230926_block1_New-01And-2To7-TP10To13.tif"
+t_segmentation = 0
+c_segmentation = 1
+c_projection_range = [0, 1, 2]
+t_projection_range = [0, 1, 2, 3]
+min_proj_dist = 5.0
+max_proj_dist = 150.0
+slice_proj = 2.0
+# |-------------------------- USER INPUT --------------------------|
 
+# Specify Segmentation Paths
 print(f"Selected image path: {img_path}")
+ct_segmentation_label = f"t-{t_segmentation}_c-{c_segmentation}"
+tifname_split = os.path.splitext(os.path.basename(img_path))
+img_path_ct_segmentation = os.path.join(os.path.dirname(img_path),
+                                        f"{tifname_split[0]}", ct_segmentation_label)
 
-# ==== Create Folder Structure ====
-resdata_dir, resfig_dir = datahandler.create_resdirs(img_path)
+# Initialise Script Run(s)
+hide_fig_output = True
+segment = True
+project = True
+savetiff = True
 
-# ==== Optional: Reduce Resolution ====
-z_reduce_factor = 1
-xy_reduce_factor = 1
+if not segment and not project and not savetiff:
+    print("[!] Please choose either segmentation, projection or result saving !")
+    sys.exit()
 
-# ==== Optional: Normalise Intensities to [0, 1] ====
-normalise_intensities = True
+if segment:
+    print("======== START segmentation ========")
+    # ==== Load Image ====
+    img_load = analysis.load_img_virtual(path=img_path, t_sel_idx=t_segmentation,
+                                         c_sel_idx=c_segmentation, reduce_xy=1,
+                                         reduce_z=1, norm_vals=False,
+                                         custom_scaling=None, custom_unit="um")
+    if img_load is None:
+        print(f"Image load failed, exiting script...")
+        sys.exit()
 
-# ==== Load Image ====
-img_raw, img_dim, img_scale, img_unit = analysis.load_img(path=img_path, reduce_xy=xy_reduce_factor,
-                                                          reduce_z=z_reduce_factor,
-                                                          norm_vals=normalise_intensities,
-                                                          custom_scaling=None)
+    img_raw, img_dim, img_scale, img_unit = img_load
 
-# ==== Plot Image Slices and Max Projections ====
-visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap='Greens',
-                 savefig=os.path.join(resfig_dir, "sliced_maxproj_raw.png"))
-z_i, y_i, x_i = int(img_dim[0] // 2), int(img_dim[1] // 2), int(img_dim[2] // 2)
-visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, x_i=x_i, y_i=y_i, z_i=z_i,
-                 savefig=os.path.join(resfig_dir, "sliced_raw.png"), cmap="Greens_r")
+    # ==== Create Folder Structure ====
+    resdata_dir, resfig_dir = datahandler.create_resdirs(img_path_ct_segmentation)
 
-extract_mesh = False
-if extract_mesh:
+    # ==== Optional: Pad Image above & below Z/Y/X with 0s ====
+    # z_pad = 5
+    # img_raw = np.pad(img_raw, pad_width=((z_pad, z_pad), (0, 0), (0, 0)), mode='constant')
+    # img_dim = img_raw.shape
+
+    # ==== Plot Image Slices and Max Projections ====
+    visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap='Greens',
+                     savefig=os.path.join(resfig_dir, f"sliced_maxproj_raw.png"), hidefig=hide_fig_output)
+    visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, savefig=os.path.join(resfig_dir, f"sliced_raw.png"),
+                     cmap="Greens_r", hidefig=hide_fig_output)
+
+    # >>>>>> Extraction of Surface(s) <<<<<<
     # ==== Blur Image ====
-    sigma = 5
+    sigma = 8
     sigma_ = analysis.rescale_val_xyz(val=sigma, scale=img_scale)
-    img_blur = analysis.gaussian_blur(img=img_raw, sigma=sigma_, renorm=True)
+    img_blur = analysis.gaussian_blur(img=img_raw, sigma=sigma_, renorm=False)
 
     # ==== Plot Image Slices ====
     visuals.plot_img(img=img_blur, scale=img_scale, unit=img_unit, cmap="inferno",
-                     savefig=os.path.join(resfig_dir, "sliced_blur.png"))
+                     savefig=os.path.join(resfig_dir, "sliced_blur.png"), hidefig=hide_fig_output)
 
     # ==== Yen Threshold Image ====
     # img_thresh_val = np.min([analysis.yen_thresh(img_blur[:, :, img_dim[2] // i]) for i in np.arange(2, 6)])
@@ -63,14 +89,16 @@ if extract_mesh:
         [analysis.yen_thresh(img_blur[:, :, img_dim[2] // 2]),
          analysis.yen_thresh(img_blur[:, img_dim[1] // 2, :]),
          analysis.yen_thresh(img_blur[img_dim[0] // 2, :, :])])
-    img_thresh_val *= 0.11
+    img_thresh_val *= 0.1
+
+    # img_thresh_val = np.min([analysis.yen_thresh(img_blur[:, :, int(img_dim[2] * i)]) for i in np.linspace(0.4, 0.6, 10)])
 
     # ==== Binarise Image using Threshold ====
-    img_thresh = analysis.thresh_img(img_blur, img_thresh_val, inverse=True)
+    img_thresh = analysis.thresh_img(img_blur, img_thresh_val)
 
     # ==== Plot Image Slices ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, savefig=os.path.join(resfig_dir, "sliced_thresh.png"),
-                     cmap="inferno", thresh_mask=img_thresh)
+                     cmap="inferno", thresh_mask=img_thresh, hidefig=hide_fig_output)
 
     # ==== Segment Surface Mesh(es) ====
     mcub_res = 2
@@ -81,93 +109,199 @@ if extract_mesh:
                               full_mesh.vertex_normals) < 0
 
     # ==== Apply Sub-Mesh Selection ====
-    inner_mesh = analysis.sel_submesh(mesh=full_mesh, mask=mesh_sel_mask)
-    outer_mesh = analysis.sel_submesh(mesh=full_mesh, mask=~mesh_sel_mask)
+    upper_surface = analysis.sel_submesh(mesh=full_mesh, mask=mesh_sel_mask)
 
     # ==== Save Mesh(es) ====
-    datahandler.save_mesh(inner_mesh, os.path.join(resdata_dir, "inner_mesh.ply"))
-    print(
-        f"Number of vertices: #INNER = {inner_mesh.vertices.shape[0]} + #OUTER = {outer_mesh.vertices.shape[0]} == #FULL = {full_mesh.vertices.shape[0]}!")
+    datahandler.save_mesh(full_mesh, os.path.join(resdata_dir, "full_mesh.ply"))
+    datahandler.save_mesh(upper_surface, os.path.join(resdata_dir, "upper_surface.ply"))
 
     # ==== Plot Image Slices with Mesh Overlay ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-                     savefig=os.path.join(resfig_dir, "sliced_raw_full-mesh.png"), meshes=[inner_mesh, outer_mesh],
-                     mesh_colors=["red", "blue"])
+                     savefig=os.path.join(resfig_dir, "sliced_raw_full-mesh.png"), meshes=[full_mesh, upper_surface],
+                     mesh_colors=["grey", "red"], hidefig=hide_fig_output)
 
     # ==== Smooth Mesh(es) ====
     smooth_factor = 0.001
     smooth_iterations = 200
-    inner_mesh_smooth = analysis.taubin_smooth_mesh(mesh=inner_mesh, n_iter=smooth_iterations, pass_band=smooth_factor)
+    upper_surface_smooth = analysis.taubin_smooth_mesh(mesh=upper_surface, n_iter=smooth_iterations,
+                                                       pass_band=smooth_factor)
+
     # ==== Save Mesh(es) ====
-    datahandler.save_mesh(inner_mesh_smooth, os.path.join(resdata_dir, "inner_mesh_smooth.ply"))
+    datahandler.save_mesh(upper_surface_smooth, os.path.join(resdata_dir, "upper_surface_smooth.ply"))
 
     # ==== Plot Image Slices with Mesh Overlay ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-                     savefig=os.path.join(resfig_dir, "sliced_smooth_inner-mesh.png"),
-                     meshes=[inner_mesh, inner_mesh_smooth], mesh_colors=["blue", "red"])
-    ################################################################################
-    # mesh_to_fit = inner_mesh_smooth.copy()
-    mesh_to_fit = datahandler.load_mesh(os.path.join(resdata_dir, "inner_mesh_smooth.ply"), recalc_normals=True)
+                     savefig=os.path.join(resfig_dir, "sliced_smooth_upper-surface.png"),
+                     meshes=[upper_surface, upper_surface_smooth], mesh_colors=["black", "red"],
+                     hidefig=hide_fig_output)
+
     # ==== Fit Sphere ====
-    sphere_params = analysis.fit_sphere(points=mesh_to_fit.vertices)
+    sphere_params = analysis.fit_sphere(points=upper_surface_smooth.vertices)
     sphere_x0, sphere_y0, sphere_z0, sphere_radius = sphere_params
-    sphere_mesh = trimesh.creation.icosphere(radius=sphere_radius, subdivisions=7)
+    sphere_mesh = trimesh.creation.icosphere(radius=sphere_radius, subdivisions=9)
     sphere_mesh.vertices += [sphere_x0, sphere_y0, sphere_z0]
     datahandler.save_array(np.array(sphere_params)[:, np.newaxis].T, "sphere_fit", header="x,y,z,radius",
                            folderpath=resdata_dir)
+
     # ==== Crop Sphere ====
     zmax, zmin = sphere_mesh.vertices[:, 0].max(), sphere_mesh.vertices[:, 0].min()
-    sphere_crop_mask = sphere_mesh.vertices[:, 0] > (zmax - zmin) / 1.4 + zmin
-    # sphere_crop_mask = np.ones_like(sphere_crop_mask)
+    sphere_crop_mask = sphere_mesh.vertices[:, 0] > (zmax - zmin) / 1.3 + zmin
     sphere_mesh_cropped = analysis.sel_submesh(mesh=sphere_mesh, mask=sphere_crop_mask)
-    sphere_mesh_cropped = analysis.subdivide_mesh(sphere_mesh_cropped, 2)
+    # sphere_mesh_cropped = analysis.subdivide_mesh(sphere_mesh_cropped, 1.5)
     print(f"Num of sphere vertices: {sphere_mesh_cropped.vertices.shape[0]}")
 
     # ==== Plot Image Slices with Mesh Overlay ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
                      savefig=os.path.join(resfig_dir, "sliced_raw_sphere-fit.png"), cmap="Greens_r",
-                     meshes=[sphere_mesh_cropped], mesh_alpha=1.0)
+                     meshes=[sphere_mesh_cropped], mesh_alpha=1.0, hidefig=hide_fig_output, slice_depth=5)
 
-    ################################################################################
     # ==== Select Sampling Mesh ====
-    # sampl_mesh = full_mesh_smooth.copy()
     sampl_mesh = sphere_mesh_cropped.copy()
-    # sampl_mesh = inner_mesh_smooth.copy()
 
     # ==== Save Sampling Mesh ====
     datahandler.save_mesh(sampl_mesh, os.path.join(resdata_dir, "sampling_mesh.ply"))
+    print("======== END segmentation ========")
 
-    # ==== Plot Image Slices with Mesh Overlay ====
-    visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-                     savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh.png"), meshes=[sampl_mesh])
-    print(f"Number of sampling points: {len(sampl_mesh.vertices)} !")
-else:
-    # ==== Load Sampling Mesh ====
-    sampl_mesh = datahandler.load_mesh(os.path.join(resdata_dir, "sampling_mesh.ply"), recalc_normals=True, clean=True)
-    print(f"Number of sampling vertices: {len(sampl_mesh.vertices)} !")
-    # sampl_mesh.show()
-    # ==== Plot Image Slices with Mesh Overlay ====
-    visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-                     savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh.png"), meshes=[sampl_mesh])
-################################################################################
-# ==== Define Projection Range ====
-dist_min = -140
-dist_max = -120
-dist_num = 20
+if project:
+    print("======== START PROJECTION ========")
+    for timepoint in t_projection_range:
+        for channel in c_projection_range:
+            print(f"======== TIMEPOINT = {timepoint} | CHANNEL = {channel} ========")
+            # ==== Choose Time Step and Channel ====
+            t_select = timepoint
+            c_select = channel
+            ct_label = f"t-{t_select}_c-{c_select}"
 
-# ==== Project onto Mesh ====
-proj_broad = analysis.proj2mesh(img=img_raw, mesh=sampl_mesh, unit=img_unit, min_dist_per_vert=None,
-                                scale=img_scale, min_dist=dist_min, max_dist=dist_max, num_dist=dist_num, mode="mean",
-                                show_proj=True,
-                                savefig=os.path.join(resfig_dir, f"{dist_min}-{dist_max}_distgraph_broad-scan.png"))
+            # ==== Load Image ====
+            img_load = analysis.load_img_virtual(path=img_path, t_sel_idx=t_select,
+                                                 c_sel_idx=c_select, reduce_xy=1,
+                                                 reduce_z=1, norm_vals=False,
+                                                 custom_scaling=None, custom_unit="um")
+            if img_load is None:
+                print(f"Image load failed for {ct_label}, skipping...")
+                continue
 
-################################################################################
-# ==== Experimental: Mercator Projection relative to Sphere Fit ====
-sphere_params_load = datahandler.load_array("sphere_fit", folderpath=resdata_dir)
-sphere_x0, sphere_y0, sphere_z0, sphere_radius = sphere_params_load[0, :]
-mercator_x, mercator_y = analysis.mercator_project(
-    pts=sampl_mesh.vertices, ref_point=[sphere_x0, sphere_y0, sphere_z0])
-visuals.plot_mercator_project(mercator_x=mercator_x, mercator_y=mercator_y,
-                              intensities=proj_broad, figsize=(14, 8), ptview=True, aspect="equal",
-                              savefig=os.path.join(resfig_dir,
-                                                   f"{dist_min}-{dist_max}_distgraph_broad-scan_mercator.png"))
+            img_raw, img_dim, img_scale, img_unit = img_load
+
+            # ==== Create Folder Structure ====
+            tifname_split = os.path.splitext(os.path.basename(img_path))
+            img_path_ct = os.path.join(os.path.dirname(img_path), f"{tifname_split[0]}", ct_label)
+            resdata_dir, resfig_dir = datahandler.create_resdirs(img_path_ct)
+
+            # ==== Optional: Pad Image above & below Z/Y/X with 0s ====
+            # z_pad = 5
+            # img_raw = np.pad(img_raw, pad_width=((z_pad, z_pad), (0, 0), (0, 0)), mode='constant')
+            # img_dim = img_raw.shape
+
+            # ==== Plot Image Slices and Max Projections ====
+            visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap='Greens',
+                             savefig=os.path.join(resfig_dir, f"sliced_maxproj_raw.png"), hidefig=hide_fig_output)
+            visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
+                             savefig=os.path.join(resfig_dir, f"sliced_raw.png"),
+                             cmap="Greens_r", hidefig=hide_fig_output)
+
+            # ----- Load Sphere Fit -----
+            resdata_dir_seg, resfig_dir_seg = datahandler.create_resdirs(img_path_ct_segmentation)
+            print(f"Loading sphere fit from {resdata_dir_seg} ...")
+            sampl_mesh = datahandler.load_mesh(os.path.join(resdata_dir_seg, "sampling_mesh.ply"),
+                                               recalc_normals=False, clean=False)
+            print(f"Number of sampling vertices: {len(sampl_mesh.vertices)} !")
+            sphere_fit_params = datahandler.load_array("sphere_fit", folderpath=resdata_dir_seg)[0, :]
+            sphere_x0, sphere_y0, sphere_z0, sphere_radius = sphere_fit_params
+            print(f"sphere_x0 = {sphere_x0} {img_unit}")
+            print(f"sphere_y0 = {sphere_y0} {img_unit}")
+            print(f"sphere_z0 = {sphere_z0} {img_unit}")
+            print(f"sphere_radius = {sphere_radius} {img_unit}")
+
+            num_proj_samples = int(np.max(img_scale) / np.min(img_scale))
+            proj_mode = "mean"
+            min_all = np.arange(min_proj_dist, max_proj_dist, slice_proj)
+            max_all = min_all + slice_proj
+            mask = max_all <= max_proj_dist
+            min_all, max_all = min_all[mask], max_all[mask]
+            proj_tasks = np.stack([
+                min_all,
+                max_all,
+                np.full(min_all.shape, num_proj_samples)
+            ], axis=1)
+
+            proj_radii = sphere_radius - (min_all + 0.5 * slice_proj)
+            print(f">> Projecting at radii {proj_radii} {img_unit} ...")
+
+            # Flip direction of projection for going "inwards"
+            proj_tasks[:, :2] *= -1
+
+            all_projections = np.empty((len(proj_tasks), len(sampl_mesh.vertices)))
+            for i in range(len(proj_tasks)):
+                dist_min, dist_max, dist_num = proj_tasks[i]
+                all_projections[i] = analysis.proj2mesh(img=img_raw, mesh=sampl_mesh, unit=img_unit,
+                                                        min_dist_per_vert=None,
+                                                        scale=img_scale, min_dist=dist_min, max_dist=dist_max,
+                                                        num_dist=dist_num, mode=proj_mode, show_proj=False, savefig="",
+                                                        normalise=False)
+            print("=======")
+            print(f"Projected {len(all_projections)} layers !")
+
+            proj_xcords, proj_ycords = analysis.mercator_project(pts=sampl_mesh.vertices,
+                                                                 ref_point=[sphere_x0, sphere_y0, sphere_z0])
+            radial_projection = analysis.create_radial_stack(values=all_projections,
+                                                             phi_coords=proj_xcords,
+                                                             theta_cords=proj_ycords,
+                                                             grid_n=np.mean(img_dim[1:]), projection_radii=proj_radii)
+            radial_stack, stack_cords = radial_projection
+            np.savez_compressed(os.path.join(resdata_dir, f"radial_projection_{ct_label}.npz"),
+                                radial_stack=radial_stack,
+                                stack_cords=stack_cords)
+
+            mid_radial_stack_i = radial_stack.shape[0] // 2
+            visuals.plot_matrix(radial_stack[mid_radial_stack_i], figsize=(14, 8), origin="upper",
+                                title=f"R = {proj_radii[mid_radial_stack_i]} {img_unit}",
+                                savefig=os.path.join(resfig_dir, f"radial-stack_{mid_radial_stack_i}.png"),
+                                unit="px", colorbar=True, cmap="inferno", hidefig=hide_fig_output)
+            # datahandler.save_tiff(radial_stack, filepath=os.path.join(resfig_dir, f"radial-stack_{ct_label}.tiff"))
+    print("======== END PROJECTION ========")
+
+if savetiff:
+    print("======== START SAVING FINAL TIFF ========")
+    file_list = sorted(
+        glob.glob(os.path.join(os.path.dirname(img_path), "**", "radial_projection_t-*_c-*.npz"), recursive=True)
+    )
+    pattern = re.compile(r't-(\d+)_c-(\d+)\.npz')
+    metadata = [pattern.search(f).groups() for f in file_list]
+    metadata = [(int(t), int(c)) for t, c in metadata]
+    times = sorted(set(t for t, c in metadata))
+    channels = sorted(set(c for t, c in metadata))
+    T, C = len(times), len(channels)
+    sample = np.load(file_list[0])
+    Z, Y, X = sample["radial_stack"].shape
+    hyperstack = np.zeros((T, Z, C, Y, X), dtype=np.float32)
+    coordstack = np.zeros((T, Z, 3, Y, X), dtype=np.float32)
+    for f, (t, c) in zip(file_list, metadata):
+        radial_projection_load = np.load(f)
+        hyperstack[times.index(t), :, channels.index(c)] = radial_projection_load["radial_stack"]
+        coordstack[times.index(t)] = np.moveaxis(radial_projection_load["stack_cords"], -1, 1)
+
+    hyperstack_uint8 = np.zeros_like(hyperstack, dtype=np.uint8)
+    for t in range(T):
+        for z in range(Z):
+            for c in range(C):
+                slice_ = hyperstack[t, z, c]
+                norm = (slice_ - slice_.min()) / (slice_.ptp() + 1e-8)
+                hyperstack_uint8[t, z, c] = (norm * 255).astype(np.uint8)
+    hyperstack_save_path = os.path.join(os.path.dirname(img_path), f"{tifname_split[0]}_radial_hyperstack.tiff")
+    coordstack_save_path = os.path.join(os.path.dirname(img_path), f"{tifname_split[0]}_radial_hyperstack_coords.tiff")
+    tifffile.imwrite(
+        hyperstack_save_path,
+        hyperstack_uint8,
+        imagej=True,
+        metadata={"axes": "TZCYX"},
+    )
+    print(f"Saved tiff to {hyperstack_save_path} !")
+    tifffile.imwrite(
+        coordstack_save_path,
+        coordstack,
+        imagej=True,
+        metadata={"axes": "TZCYX"},
+    )
+    print(f"Saved tiff to {coordstack_save_path} !")
+    print("======== END SAVING FINAL TIFF ========")
