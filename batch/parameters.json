@@ -1,0 +1,10 @@
+{
+  "img_path": "/Users/andreadi/Downloads/CTL_TG_His_lyn_E25_20230926_block1_New-01And-2To7-TP10To13.tif",
+  "result_path": "/Users/andreadi/Downloads/cluster_result/",
+  "t_segmentation": 0,
+  "c_segmentation": 0,
+  "min_proj_dist": 0.0,
+  "max_proj_dist": 120.0,
+  "proj_thickness": 4.0,
+  "num_proj_samples": 10
+}

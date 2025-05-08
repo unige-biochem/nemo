@@ -280,6 +280,22 @@ def get_tiff_scaling(tif):
     return img_scale
 
 
+def load_img_dimensions(path):
+    print(f">> Importing {path}...")
+    if not os.path.exists(path):
+        print(f"[!] Image does not exist, aborting !")
+        return None
+
+    with TiffFile(path) as tif:
+        series = tif.series[0]
+        axes = series.axes
+        shape = series.shape
+        axis_map = {ax: i for i, ax in enumerate(axes)}
+        dims = {ax: shape[axis_map[ax]] if ax in axis_map else 1 for ax in ['T', 'Z', 'C', 'Y', 'X']}
+        print(', '.join(f"{k} = {v}" for k, v in dims.items()))
+        return dims
+
+
 def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_unit=None, custom_scaling=None,
                      reduce_xy=1, reduce_z=1):
     print(f">> Importing {path}...")
