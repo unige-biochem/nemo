@@ -7,7 +7,7 @@
   "t_segmentation": 0,
   "c_segmentation": 0,
   "min_proj_dist": 0.0,
-  "max_proj_dist": 20.0,
+  "max_proj_dist": 50.0,
   "proj_thickness": 5.0,
   "num_proj_samples": 10,
   "flip_proj_direction": true,
