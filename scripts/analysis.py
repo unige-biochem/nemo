@@ -858,8 +858,8 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
     return proj_intensity_values
 
 
-def mercator_project(pts, ref_point=None, rotate=None, debug=False):
-    print(">> Applying Mercator Projection...")
+def spherical_project(pts, ref_point=None, rotate=None, debug=False):
+    print(">> Applying Spherical Projection...")
     if ref_point is not None:
         centered_inner_verts = pts - ref_point
     else:
@@ -869,12 +869,12 @@ def mercator_project(pts, ref_point=None, rotate=None, debug=False):
     x, y, z = centered_inner_verts[:, 0], centered_inner_verts[:, 1], centered_inner_verts[:, 2]
 
     mercator_rho = np.sqrt(x ** 2 + y ** 2 + z ** 2)
-    mercator_x = np.degrees(np.arctan2(y, x))
-    mercator_y = np.degrees(np.arccos(z / mercator_rho))
+    mercator_phi = np.degrees(np.arctan2(y, x))
+    mercator_theta = np.degrees(np.arccos(z / mercator_rho))
     if debug:
-        print(f"Min X = {np.min(mercator_x)} | MAX X = {np.max(mercator_x)}")
-        print(f"Min Y = {np.min(mercator_y)} | MAX Y = {np.max(mercator_y)}")
-    return mercator_x, mercator_y
+        print(f"Min phi = {np.min(mercator_phi)} | MAX phi = {np.max(mercator_phi)}")
+        print(f"Min theta = {np.min(mercator_theta)} | MAX theta = {np.max(mercator_theta)}")
+    return mercator_phi, mercator_theta
 
 
 def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_n=None):
