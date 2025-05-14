@@ -1,1 +1,0 @@
-/Users/andreadi/venv/bin/python /Users/andreadi/Documents/GitHub/nemo/batch_spherical_projection/nemo_spherical_projection.py --config "/Users/andreadi/Documents/GitHub/nemo/embl_batch/run_params.json"

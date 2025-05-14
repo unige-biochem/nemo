@@ -7,7 +7,9 @@ PhD Student @ University of Geneva
 Aurélien Roux Lab & Guillaume Salbreux Lab
 
 ---
+
 ## 👋 Hello !
+
 Welcome to **NEMO**, the **Nematics and Morphology Image Analysis Toolkit**.
 This toolkit is designed to provide efficient and modular image analysis tools, enabling the study of nematics and
 morphological features through a combination of customizable scripts and batch processing capabilities.  
@@ -30,8 +32,13 @@ NEMO/
 │   ├── fix_dependencies.ipynb  # Dependency Fix Notebook
 │   ├── sandbox.py              # Debugging Sandbox Notebook
 │   └── generator.py            # Simulation Notebook
-├── batch_spherical_projection/ # Folder Spherical Projection (for EMBL)
+├── auto_spherical_projection/  # Folder of Spherical Projection (for EMBL)
+│   ├── spherical_projection.py # Automated Batch Script
+│   ├── run_params.json         # Batch Run Configuration
+│   ├── run.sh                  # Example Run Shell Script
+│   └── line_measure.ijm        # FIJI Module for Line Measurements
 ├── main.ipynb                  # Main Pipeline Workspace Notebook
+├── batch_analysis.py           # Example Batch Analysis
 ├── requirements.txt            # Required Python Libraries
 └── README.md                   # This File
 ```  
