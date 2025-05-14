@@ -193,17 +193,21 @@ def main(args):
         sphere_mesh.vertices += [sphere_x0, sphere_y0, sphere_z0]
         datahandler.save_array(np.array(sphere_params)[:, np.newaxis].T, "sphere_fit", header="x,y,z,radius",
                                folderpath=resdata_dir)
+        visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
+                         savefig=os.path.join(resfig_dir, "sliced_sphere-complete.png"),
+                         meshes=[sphere_mesh], mesh_colors=["red"], hidefig=hide_fig_output)
 
         # ==== Crop Sphere ====
         print(f">> Cropping sphere to {seg_fit_crop_cap_angle} degrees cap...")
         sphere_crop_mask = ((sphere_mesh.vertices[:, 0] - sphere_x0) / np.linalg.norm(
-            sphere_mesh.vertices - sphere_x0, axis=1)) >= np.cos(np.radians(seg_fit_crop_cap_angle))
+            sphere_mesh.vertices - [sphere_x0, sphere_y0, sphere_z0], axis=1)) >= np.cos(
+            np.radians(seg_fit_crop_cap_angle))
         sphere_mesh_cropped = analysis.sel_submesh(mesh=sphere_mesh, mask=sphere_crop_mask)
         print(f"Num of sphere vertices: {sphere_mesh_cropped.vertices.shape[0]}")
 
         # ==== Plot Image Slices with Mesh Overlay ====
         visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-                         savefig=os.path.join(resfig_dir, "sliced_raw_sphere-fit.png"), cmap="Greens_r",
+                         savefig=os.path.join(resfig_dir, "sliced_sphere-fit.png"), cmap="Greens_r",
                          meshes=[sphere_mesh_cropped], mesh_alpha=1.0, hidefig=hide_fig_output, slice_depth=5)
 
         # ==== Select Sampling Mesh ====
