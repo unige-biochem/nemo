@@ -12,6 +12,7 @@ Welcome to **NEMO**, the **Nematics and Morphology Image Analysis Toolkit**.
 This toolkit is designed to provide efficient and modular image analysis tools, enabling the study of nematics and
 morphological features through a combination of customizable scripts and batch processing capabilities.  
 It has been tested on both Apple (MacBook Pro 16-inch, 2023) and Windows (Analysis PC @Roux Lab).
+
 ---
 
 ## 📂 **Project Structure**
