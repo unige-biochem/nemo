@@ -833,25 +833,24 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
     outward_samples = verts[:, None, :] + normals[:, None, :] * (distances_reshaped + min_dist_per_vert[:, None, None])
     sampling_points = outward_samples.reshape(-1, 3)
 
-    intensities = interp_function(sampling_points)
-    intensities = intensities.reshape(len(verts), -1)
-    masked_intensities = np.ma.masked_where(intensities == -1, intensities)
-
-    plot_mask = np.copy(intensities)
-    plot_mask[plot_mask == -1] = None
+    intensities = interp_function(sampling_points).reshape(len(verts), -1)
+    outside_mask = intensities == -1
+    if np.any(outside_mask):
+        print(
+            f"[!] {np.any(outside_mask, axis=1).sum()} / {len(verts)} sampling lines reach outside FOV, defaulting to 0.")
+    intensities[outside_mask] = 0
     if show_proj:
-        plot_dist_kymograph(distances=distances, plot_mask=plot_mask,
-                            plot_all=masked_intensities, cmap=cmap,
-                            figsize=figsize, unit=unit, savefig=savefig)
+        plot_dist_kymograph(distances=distances, intensities=intensities, cmap=cmap, figsize=figsize, unit=unit,
+                            savefig=savefig)
     if mode == "max":
-        proj_intensity_values = np.max(masked_intensities, axis=1)
+        proj_intensity_values = np.max(intensities, axis=1)
     elif mode == "mean":
-        proj_intensity_values = np.mean(masked_intensities, axis=1)
+        proj_intensity_values = np.mean(intensities, axis=1)
     else:
         return None
 
     if return_full:
-        return distances, outward_samples, masked_intensities
+        return distances, outward_samples, intensities
 
     if normalise:
         proj_intensity_values = normalise_range(proj_intensity_values)

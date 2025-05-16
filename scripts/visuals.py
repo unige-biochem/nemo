@@ -631,22 +631,17 @@ def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=20
         plt.close()
 
 
-def plot_dist_kymograph(distances, plot_mask, plot_all, cmap, figsize, unit, savefig="", dpi=200, hidefig=False):
+def plot_dist_kymograph(distances, intensities, cmap, figsize, unit, savefig="", dpi=200, hidefig=False):
     fig, axes = plt.subplots(2, 1, figsize=figsize)
-
-    data_min = np.nanmin(plot_mask)
-    data_max = 0.9
-    plot_mask = (plot_mask - data_min) / (data_max - data_min)
-    plot_mask[plot_mask > 1.0] = 1.0
-    axes[0].imshow(plot_mask, aspect="auto", cmap=cmap)
-    avg_masked = np.average(plot_all, axis=0)
-    axes[1].plot(distances, avg_masked, "o-")
+    intensities = normalise_range(intensities)
+    axes[0].imshow(intensities, aspect="auto", cmap=cmap)
+    axes[1].plot(distances, np.average(intensities, axis=0), "o-")
     axes[0].set_ylabel("Sampling Point Index")
     axes[0].tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     axes[1].set_ylabel("Average Intensity (a.u.)")
     axes[1].set_xlabel(f"Distance from Min Distance ({unit})")
-    avg_masked_mean = distances[np.argmax(np.average(plot_all, axis=0))]
-    axes[1].axvline(x=avg_masked_mean, label=f"ARGMAX = {round(avg_masked_mean, 1)}")
+    mean_intensity = distances[np.argmax(np.average(intensities, axis=0))]
+    axes[1].axvline(x=mean_intensity, label=f"ARGMAX = {round(mean_intensity, 1)}")
     axes[1].legend()
     plt.tight_layout()
     if savefig != "":
