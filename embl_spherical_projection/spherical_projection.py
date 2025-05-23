@@ -28,9 +28,9 @@ def parse_args():
     parser.add_argument("--savetiff", action='store_true', default=False, help="Saving .tiff ?")
     parser.add_argument("--t_segmentation", type=int, default=0, help="Time index for segmentation")
     parser.add_argument("--c_segmentation", type=int, default=0, help="Channel index for segmentation")
-    parser.add_argument("--min_proj_dist", type=float, default=0.0, help="Minimum projection distance")
+    parser.add_argument("--min_proj_dist", type=float, default=5.0, help="Minimum projection distance")
     parser.add_argument("--max_proj_dist", type=float, default=120.0, help="Maximum projection distance")
-    parser.add_argument("--proj_thickness", type=float, default=60.0, help="Projection thickness")
+    parser.add_argument("--proj_thickness", type=float, default=20.0, help="Projection thickness")
     parser.add_argument("--num_proj_samples", type=int, default=10, help="Number of projection samples")
     parser.add_argument("--flip_proj_direction", action='store_false', default=True, help="Flip projection direction ?")
     parser.add_argument("--proj_mode", type=str, default="mean", help="Projection mode")
@@ -40,9 +40,7 @@ def parse_args():
     parser.add_argument("--smooth_factor", type=float, default=0.001, help="Smooth factor after segmentation ?")
     parser.add_argument("--smooth_iterations", type=int, default=200, help="Smooth iterations after segmentation ?")
     parser.add_argument("--seg_fit_sphere_subdiv", type=int, default=9, help="Fit sphere subdivision ?")
-    parser.add_argument("--seg_fit_crop_cap_angle", type=float, default=60.0, help="Fit sphere crop cap angle ?")
-    parser.add_argument("--proj_rot_angles", type=list, default=[0.0, 0.0, 0.0],
-                        help="Rotation angles before projection (degrees)?")
+    parser.add_argument("--seg_fit_crop_cap_angle", type=float, default=60.0, help="Fit sphere crop cap angle (deg)?")
     args = parser.parse_args()
     if args.config:
         with open(args.config, 'r') as f:
@@ -79,9 +77,9 @@ def main(args):
         return None
 
     # Additional Projection Parameters
-    proj_rot_angles = args.proj_rot_angles
     flip_proj_direction = args.flip_proj_direction
     proj_mode = args.proj_mode
+    proj_rot_angles = [0.0, 0.0, 0.0]
 
     # Load Dimensions
     print(f"Selected image path: {img_path}")
@@ -157,7 +155,7 @@ def main(args):
         full_mesh = analysis.marching_cubes(img=img_thresh, scale=img_scale, level=0.5, step_size=mcub_res)
 
         # ==== Select TOP / BOTTOM Mesh ====
-        mesh_sel_mask = np.einsum('ij,ij->i', np.array([[1, 0, 0] for i in range(len(full_mesh.vertices))]),
+        mesh_sel_mask = np.einsum('ij,ij->i', np.array([[1, 0, 0] for _ in range(len(full_mesh.vertices))]),
                                   full_mesh.vertex_normals) < 0
 
         # ==== Apply Sub-Mesh Selection ====

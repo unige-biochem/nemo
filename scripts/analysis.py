@@ -9,6 +9,7 @@ Author: Konstantinos Andreadis
 import os
 import numpy as np
 from tifffile import imread, TiffFile
+import zarr
 from scipy.spatial import KDTree
 from skimage import measure
 from scipy.interpolate import RegularGridInterpolator
@@ -322,7 +323,6 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
 
         # ======== Extract single z-stack ========
         T = shape[axis_map['T']] if 'T' in axis_map else 1
-        Z = shape[axis_map['Z']] if 'Z' in axis_map else 1
         C = shape[axis_map['C']] if 'C' in axis_map else 1
 
         if t_sel_idx >= T or c_sel_idx >= C or t_sel_idx < 0 or c_sel_idx < 0:
@@ -331,24 +331,18 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
             return None
         print(f">> Selecting Z-Stack at T={t_sel_idx} C={c_sel_idx} ...")
 
-        strides = {
-            'T': Z * C if 'T' in axis_map else 0,
-            'Z': C if 'Z' in axis_map else 0,
-            'C': 1 if 'C' in axis_map else 0,
-        }
+        store = series.aszarr(level=0)
+        arr = zarr.open(store, mode='r')
+        key = [slice(None)] * arr.ndim
+        for ax, idx in axis_map.items():
+            if ax == 'T':
+                key[idx] = t_sel_idx
+            elif ax == 'C':
+                key[idx] = c_sel_idx
+            elif ax == 'Z':
+                key[idx] = slice(None)
 
-        z_stack = []
-        for z_idx in range(Z):
-            flat_index = 0
-            if 'T' in axis_map:
-                flat_index += t_sel_idx * strides['T']
-            if 'Z' in axis_map:
-                flat_index += z_idx * strides['Z']
-            if 'C' in axis_map:
-                flat_index += c_sel_idx * strides['C']
-            z_stack.append(tif.pages[flat_index].asarray())
-
-        img_raw = np.stack(z_stack, axis=0)
+        img_raw = np.asarray(arr[tuple(key)])
         img_dim = img_raw.shape
 
     # ======== Optional: Scaling Override ========
@@ -463,7 +457,7 @@ def sel_submesh(mesh, mask):
 ###########################
 # MESH PROCESSING MODULES #
 ###########################
-def clean_mesh(mesh, debug=False):
+def clean_mesh(mesh):
     mesh = mesh.copy()
     verts, faces, normals = mesh.vertices, mesh.faces, mesh.vertex_normals
     invalid_normals = np.linalg.norm(normals, axis=1) < 0.9
@@ -472,8 +466,8 @@ def clean_mesh(mesh, debug=False):
     vertex_map = np.cumsum(~invalid_normals) - 1
     invalid_face_mask = np.any(invalid_normals[faces], axis=1)
     valid_faces = vertex_map[faces[~invalid_face_mask]]
-    if debug:
-        print(f"Cleaned {np.sum(invalid_normals)} out of {len(mesh.vertex_normals)} !")
+    if np.sum(invalid_normals) > 0:
+        print(f"[!] Cleaned {np.sum(invalid_normals)} out of {len(mesh.vertex_normals)} !")
     mesh_cleaned = trimesh.Trimesh(vertices=valid_verts, faces=valid_faces, vertex_normals=valid_normals)
     return mesh_cleaned
 
@@ -678,7 +672,7 @@ def generate_sliced_mesh(img, img_scale, xres=1, yres=1, zres=1, normal_vec=None
 #########################
 def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debug=False, gauss_crop_range=None,
                          mean_crop_range=None, boundary_excl_factor=0.1):
-    print(f">> Calculating curvature for mesh with k={k} and {len(mesh.vertices)} vertices...")
+    print(f">> Calculating curvature for mesh with k={k} and for {num_sample}/{len(mesh.vertices)} vertices...")
     random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
     verts = mesh.vertices[random_idxs]
     N = len(verts)
@@ -750,6 +744,32 @@ def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debu
     return C_gauss, C_mean, Gauss_idxs, mean_idxs
 
 
+def expand_curvature_results(mesh, curvature_analysis, k_start=50, k_increment=50, max_k=500):
+    print(f">> Expanding curvature analysis to mesh...")
+    C_gauss, C_mean, Gauss_idxs, mean_idxs = curvature_analysis
+    full_C_gauss = np.full(mesh.vertices.shape[0], np.nan)
+    full_C_mean = np.full(mesh.vertices.shape[0], np.nan)
+    full_C_gauss[Gauss_idxs] = C_gauss
+    full_C_mean[mean_idxs] = C_mean
+    uncalc_c_gauss = np.setdiff1d(np.arange(mesh.vertices.shape[0]), Gauss_idxs)
+    uncalc_c_mean = np.setdiff1d(np.arange(mesh.vertices.shape[0]), mean_idxs)
+    k = k_start
+    while np.isnan(full_C_gauss).sum() != 0 and np.isnan(full_C_mean).sum() != 0:
+        if k > max_k:
+            print(f"Gave up after trying k up to {k}!")
+            break
+        print(f"Trying k={k}...")
+        try:
+            idxs = coord_search_neighbours(mesh.vertices, k=k)
+            full_C_gauss[uncalc_c_gauss] = np.nanmean(full_C_gauss[idxs[uncalc_c_gauss]], axis=1)
+            full_C_mean[uncalc_c_mean] = np.nanmean(full_C_mean[idxs[uncalc_c_mean]], axis=1)
+        except RuntimeWarning:
+            print("Failed to find neighbours...")
+        k += k_increment
+    print("Finished !")
+    return full_C_gauss, full_C_mean
+
+
 def density_estimate(mesh, k=30, debug=False, crop_range=None):
     print(f">> Density estimation for {len(mesh.vertices)} vertices with k = {k}...")
     idxs, dists = coord_search_neighbours(mesh.vertices, k=k, debug=False, return_dists=True)
@@ -771,7 +791,8 @@ def density_estimate(mesh, k=30, debug=False, crop_range=None):
 
 
 def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None):
-    print(f">> Calculating distance between two meshes ({mesh_1.vertices.shape[0]}, {mesh_2.vertices.shape[0]}) ...")
+    print(
+        f">> Calculating distance between two meshes ({mesh_1.vertices.shape[0]}, {mesh_2.vertices.shape[0]}) using {num_sample} samples...")
     random_idxs = np.random.choice(np.arange(mesh_1.vertices.shape[0]), size=num_sample)
     vertices_1, normals_1 = mesh_1.vertices[random_idxs], mesh_1.vertex_normals[random_idxs]
     locations, index_ray, index_tri = mesh_2.ray.intersects_location(vertices_1, normals_1)
@@ -796,6 +817,28 @@ def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None):
         return cropped_distances, cropped_indeces
 
 
+def expand_distance_results(mesh, distance_analysis, k_start=50, k_increment=50, max_k=500):
+    print(f">> Expanding curvature analysis to mesh...")
+    distances, dist_indeces = distance_analysis
+    full_distances = np.full(mesh.vertices.shape[0], np.nan)
+    full_distances[dist_indeces] = distances,
+    uncalc_dists = np.setdiff1d(np.arange(mesh.vertices.shape[0]), dist_indeces)
+    k = k_start
+    while np.isnan(full_distances).sum() != 0:
+        if k > max_k:
+            print(f"Gave up after trying k up to {k}!")
+            break
+        print(f"Trying k={k}...")
+        try:
+            idxs = coord_search_neighbours(mesh.vertices, k=k)
+            full_distances[uncalc_dists] = np.nanmean(full_distances[idxs[uncalc_dists]], axis=1)
+        except:
+            print("Failed to find neighbours...")
+        k += k_increment
+    print("Finished !")
+    return full_distances
+
+
 def geodesic_distmesh(mesh, index1, index2, debug=False):
     edges = mesh.edges_unique
     lengths = mesh.edges_unique_length
@@ -817,7 +860,8 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
               figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False):
     num_dist = int(num_dist)
-    print(f">> Projecting {mode} image intensities on verts using {interp_method} interpolation method...")
+    print(
+        f">> Projecting {mode} image intensities on {len(mesh.vertices)} verts using {interp_method} interpolation method...")
     print(f"Range: MIN = {min_dist}{unit}, MAX = {max_dist}{unit}, NUM = {num_dist}")
     verts, normals = mesh.vertices, mesh.vertex_normals
     if min_dist_per_vert is None:
@@ -1270,6 +1314,27 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
     return S_order, n_avg
 
 
+def unique_neighborhoods(arr):
+    M, k = arr.shape
+    max_index = arr.max() + 1
+    membership = np.zeros((M, max_index), dtype=bool)
+    membership[np.arange(M)[:, None], arr] = True
+    conflict = membership @ membership.T > 0
+    np.fill_diagonal(conflict, 0)
+    selected = []
+    remaining = np.ones(M, dtype=bool)
+
+    while remaining.any():
+        degrees = conflict[remaining][:, remaining].sum(axis=1)
+        idx_in_remaining = np.argmin(degrees)
+        idx = np.flatnonzero(remaining)[idx_in_remaining]
+        selected.append(idx)
+        to_remove = conflict[idx] | (np.arange(M) == idx)
+        remaining[to_remove] = False
+
+    return arr[selected]
+
+
 def patch_surface_integral(mesh, value, patch_idxs, debug=False):
     patch_integrals = []
     for i in range(patch_idxs.shape[0]):
@@ -1307,17 +1372,20 @@ def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
     return boundary_indeces
 
 
-def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, debug=False):
+def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, correct_orientation=True, debug=False):
     topological_charges = []
     for i in range(len(loop_idxs)):
         patch_indeces = loop_idxs[i]
         normal_sel = normals[patch_indeces]
         dir_indices = np.searchsorted(director_indeces, patch_indeces)
+        if dir_indices.max() == len(directors):
+            print(f"Weird sorting bug, using max - 1...")
+            dir_indices -= 1
         directors_vec_sel = directors[dir_indices][:, 3:]
         p_current = directors_vec_sel
         p_next = np.roll(directors_vec_sel, -1, axis=0)
-
-        p_next *= np.sign(np.einsum('ij,ij->i', p_current, p_next))[:, np.newaxis]
+        if correct_orientation:
+            p_next *= np.sign(np.einsum('ij,ij->i', p_current, p_next))[:, np.newaxis]
 
         pdiff = p_next - p_current
         dot_prod_pdiff_normal = np.einsum('ij,ij->i', pdiff, normal_sel)
@@ -1333,9 +1401,11 @@ def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, de
 
 
 def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y, c_gauss, loop_angle_precision=1,
-                      k_charge=5 ** 2, debug=False, return_all_contributions=False):
+                      k_charge=5 ** 2, debug=False, return_all_contributions=False, correct_orientation=True):
     print(f">> Calculating topological charge for {len(directors)} directors...")
-    charge_patch_broad = coord_search_neighbours(mesh.vertices, k=k_charge, debug=debug)[director_indeces][calc_idxs]
+    charge_patch_broad = coord_search_neighbours(mesh.vertices,
+                                                 custom_probes=mesh.vertices[director_indeces[calc_idxs]], k=k_charge,
+                                                 debug=debug)
     m_gauss_contribution = patch_surface_integral(mesh=mesh, value=c_gauss,
                                                   patch_idxs=charge_patch_broad,
                                                   debug=debug) / (2 * np.pi)
@@ -1345,7 +1415,8 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                                                   angle_precision=loop_angle_precision)
     m_line_charge = top_charge_loop_integral(loop_idxs=calc_charge_loop_idxs, directors=directors,
                                              director_indeces=director_indeces,
-                                             normals=mesh.vertex_normals, debug=debug)
+                                             normals=mesh.vertex_normals, debug=debug,
+                                             correct_orientation=correct_orientation)
     m_charge = m_line_charge + m_gauss_contribution
     if debug:
         print(f"Charges calculated : {m_charge}")
@@ -1399,3 +1470,52 @@ def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
         print(f"S_order with shape {S_order.shape} = \n {S_order}")
         print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
     return S_order, n_avg
+
+
+def top_charge_bulk(vec_field, measure_centers, measure_radii, n_angle_bins=200, debug=False):
+    print(
+        f">> Calculating 3d defect charge for {len(measure_centers)} measuring spheres at angular resolution {n_angle_bins} for {len(vec_field)} vectors...")
+    points = vec_field[:, :3]
+    vectors = vec_field[:, 3:]
+    n_theta = n_angle_bins
+    n_phi = 2 * n_theta
+
+    # Angular grids
+    theta = np.linspace(1e-5, np.pi - 1e-5, n_theta)
+    phi = np.linspace(0, 2 * np.pi, n_phi)
+    dtheta = theta[1] - theta[0]
+    dphi = phi[1] - phi[0]
+    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing='ij')
+
+    # Spherical directions
+    sph_dx = np.sin(theta_grid) * np.cos(phi_grid)
+    sph_dy = np.sin(theta_grid) * np.sin(phi_grid)
+    sph_dz = np.cos(theta_grid)
+    sphere_dirs = np.stack([sph_dx, sph_dy, sph_dz], axis=-1)
+    sphere_offsets = measure_radii * sphere_dirs
+    sphere_offsets_flat = sphere_offsets.reshape(-1, 3)
+
+    charges = []
+
+    for center in measure_centers:
+        sample_pts = center + sphere_offsets_flat
+        interp_vectors = griddata(points, vectors, sample_pts, method="linear")
+
+        vecs = interp_vectors.reshape(n_theta, n_phi, 3)
+        norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
+        n = vecs / (norms + 1e-12)
+
+        dn_dtheta = np.gradient(n, dtheta, axis=0)
+        dn_dphi = np.gradient(n, dphi, axis=1)
+
+        sin_theta = np.sin(theta_grid)
+        cross = np.cross(dn_dtheta, dn_dphi)
+        integrand = np.einsum("ijk,ijk->ij", n, cross) / (sin_theta + 1e-12)
+        integrand *= sin_theta
+        total = np.sum(integrand) * dtheta * dphi / (4 * np.pi)
+        charges.append(total)
+    m_charges = np.array(charges)
+    if debug:
+        print(f"Charges found: {charges}")
+        print(f"at positions: {measure_centers}")
+    return m_charges

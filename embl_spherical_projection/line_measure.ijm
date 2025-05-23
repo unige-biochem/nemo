@@ -1,11 +1,12 @@
 // Extra FIJI script for NEMO, the Nematics & Morphology Toolkit.
 // Purpose: Embryo Flattening for Magdalena Schindler (EMBL Heidelberg, Petridou Lab).
 // Author: Konstantinos Andreadis
+
 getDimensions(width, height, channels, slices, frames);
-outputPath = "/Users/andreadi/Downloads/resss/debug/arc_lengths.csv";
-open("/Users/andreadi/Downloads/resss/debug/coordinate_metadata.tiff");
+open("..../coordinate_metadata.tiff"); // [!] Specify Path for input metadata TIFF [!]
+rename("MetadataTIFF");
+outputPath = "..../arc_lengths.csv"; // [!] Specify Path for output CSV [!]
 run("Make Substack...", "channels=1,2,3 stack");
-run("Close");
 
 run("ROI Manager...");
 waitForUser("Draw multiple line ROIs and click 'Add' for each one in the ROI Manager, then press OK");
@@ -15,11 +16,11 @@ setBatchMode(true);
 n = roiManager("count");
 totalArcLength = 0;
 csv = "ROI,ArcLength(um)\n"; // CSV header
-print("Found " + n + "lines in ROI !");
+print("Found " + n + " lines in ROI!");
+
 for (r = 0; r < n; r++) {
     roiManager("Select", r);
-    Stack.getPosition(c, z, t);
-    print(c, z, t);
+    Stack.getPosition(c, z, t); // get T and Z of where line was drawn
     getSelectionCoordinates(x, y);
     makeLine(x[0], y[0], x[1], y[1]);
     run("Interpolate", "interval=1");
@@ -31,18 +32,20 @@ for (r = 0; r < n; r++) {
         y1 = y[i];
         x2 = x[i + 1];
         y2 = y[i + 1];
-        
-		phiIndex   = (z - 1) * channels + 1;
-        thetaIndex = (z - 1) * channels + 2;
-        RIndex     = (z - 1) * channels + 3;
-        
-        setSlice(phiIndex);   phi1 = getPixel(x1, y1);
-        setSlice(thetaIndex); theta1 = getPixel(x1, y1);
-        setSlice(RIndex);     R1 = getPixel(x1, y1);
 
-        setSlice(phiIndex);   phi2 = getPixel(x2, y2);
-        setSlice(thetaIndex); theta2 = getPixel(x2, y2);
-        setSlice(RIndex);     R2 = getPixel(x2, y2);
+        // Calculate correct metadata slice indices (1-based)
+        phiSlice   = ((t - 1) * slices * 3) + ((z - 1) * 3) + 1;
+        thetaSlice = phiSlice + 1;
+        RSlice     = phiSlice + 2;
+
+        selectWindow("MetadataTIFF");
+        setSlice(phiSlice);   phi1 = getPixel(x1, y1);
+        setSlice(thetaSlice); theta1 = getPixel(x1, y1);
+        setSlice(RSlice);     R1 = getPixel(x1, y1);
+
+        setSlice(phiSlice);   phi2 = getPixel(x2, y2);
+        setSlice(thetaSlice); theta2 = getPixel(x2, y2);
+        setSlice(RSlice);     R2 = getPixel(x2, y2);
 
         phi1 = PI * phi1 / 180;
         theta1 = PI * theta1 / 180;
@@ -56,9 +59,10 @@ for (r = 0; r < n; r++) {
         arcLength += dS;
     }
 
-    print("Arc Length of ROI " + r + ": " + arcLength + "um");
+    print("Arc Length of ROI " + r + ": " + arcLength + " um");
     csv += "" + r + "," + arcLength + "\n";
     totalArcLength += arcLength;
 }
-print("Total Arc Length from all ROIs: " + totalArcLength + "um");
+
+print("Total Arc Length from all ROIs: " + totalArcLength + " um");
 File.saveString(csv, outputPath);

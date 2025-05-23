@@ -56,34 +56,6 @@ def create_figdir(directory):
         os.makedirs(directory)
 
 
-def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities, cut_z):
-    print(">> Colouring based on distance...")
-    norm_distances = Normalize(vmin=np.min(distances), vmax=np.max(distances))
-    cmap = sharp_blue_red(min_val=np.min(distances), intermediate_val=middle_val,
-                          max_val=np.max(distances))
-    # reshaped_radial_points = radial_points.reshape(-1, 3)
-    intensities_flat = radial_intensities.filled(0).ravel()
-    intensities_flat = normalise_range(intensities_flat)
-    dist_color = cmap(norm_distances(np.tile(distances, radial_points.shape[0])))
-    dist_color[:, :3] = dist_color[:, :3] * intensities_flat[:, None]
-    dist_color[:, 3] = np.ones_like(intensities_flat) * 0.5
-
-    dist_color_reshaped = dist_color.reshape(len(mesh.vertices), len(distances), 4)
-    # reshaped_radial_points = reshaped_radial_points.reshape(len(mesh.vertices), len(distances), 3)
-
-    dist_points = mesh.vertices
-
-    dist_color = np.max(dist_color_reshaped, axis=1)
-    if cut_z:
-        cut_mask = dist_points[:, 0] >= np.max(dist_points[:, 0]) // 2
-        cut_dist_points = dist_points[cut_mask]
-        cut_dist_color = dist_color[cut_mask]
-    else:
-        cut_dist_points = dist_points
-        cut_dist_color = dist_color
-    return cut_dist_points, cut_dist_color, cmap
-
-
 def sharp_blue_red(min_val, intermediate_val, max_val):
     color_below_mid = (0, 1, 1)
     color_above_mid = (1, 0, 0)
@@ -94,6 +66,20 @@ def sharp_blue_red(min_val, intermediate_val, max_val):
         else:
             colors.append(color_above_mid)
     return ListedColormap(colors)
+
+
+def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
+    print(">> Colouring based on distance...")
+    norm_distances = Normalize(vmin=np.min(distances), vmax=np.max(distances))
+    cmap = sharp_blue_red(min_val=np.min(distances), intermediate_val=middle_val,
+                          max_val=np.max(distances))
+    intensities_flat = normalise_range(radial_intensities.ravel())
+    dist_color = cmap(norm_distances(np.tile(distances, radial_points.shape[0])))
+    dist_color[:, :3] = dist_color[:, :3] * intensities_flat[:, None]
+    dist_color[:, 3] = np.ones_like(intensities_flat) * 0.5
+    dist_color_reshaped = dist_color.reshape(len(mesh.vertices), len(distances), 4)
+    dist_color = np.max(dist_color_reshaped, axis=1)
+    return dist_color, cmap
 
 
 #######################

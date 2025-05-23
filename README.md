@@ -11,9 +11,31 @@ Aurélien Roux Lab & Guillaume Salbreux Lab
 ## 👋 Hello !
 
 Welcome to **NEMO**, the **Nematics and Morphology Image Analysis Toolkit**.
-This toolkit is designed to provide efficient and modular image analysis tools, enabling the study of nematics and
-morphological features through a combination of customizable scripts and batch processing capabilities.  
+
+This toolkit is designed to provide efficient and modular image analysis modules, enabling the study of nematics and
+morphological features through a combination of customizable scripts and batch processing capabilities.
+
+Fully developed in Python, NEMO reads hyperstack TZCYX .tif(f) files, and performs:
+
+- Mesh segmentation
+- Mesh curvature and thickness measurements
+- Projection onto mesh
+- Nematic order quantification
+- Topological defects characeterisation
+
+on:
+
+- Planar surfaces
+- Curved surfaces
+- Bulk volumes
+
+The output consists of a folder structure containing the raw data and result figures, customisable and loadable by the
+user at any step in the pipeline.
+
 It has been tested on both Apple (MacBook Pro 16-inch, 2023) and Windows (Analysis PC @Roux Lab).
+
+I am actively developing this pipeline, with new commits adding/changing modules in the backend.
+If you come accross any issue, don't hesitate to post a GitLab issue or email me (konstantinos.andreadis@unige.ch) !
 
 ---
 
@@ -32,7 +54,7 @@ NEMO/
 │   ├── fix_dependencies.ipynb  # Dependency Fix Notebook
 │   ├── sandbox.py              # Debugging Sandbox Notebook
 │   └── generator.py            # Simulation Notebook
-├── auto_spherical_projection/  # Folder of Spherical Projection (for EMBL)
+├── embl_spherical_projection/  # Folder of Spherical Projection (for EMBL)
 │   ├── spherical_projection.py # Automated Batch Script
 │   ├── run_params.json         # Batch Run Configuration
 │   ├── run.sh                  # Example Run Shell Script
@@ -49,7 +71,8 @@ NEMO/
 
 ### Prerequisites
 
-- Make sure you have exactly **Python 3.9.6** installed. You can check your version by running:
+- Make sure you have exactly **Python 3.9.6** installed (to allow napari and trimesh to work correctly). You can check
+  your version by running:
 
     ```bash
     python --version
@@ -59,11 +82,10 @@ NEMO/
 
 1. Clone this repository:
 
-- If a Roux Lab Member: Go to ```NAS/...```
-- Else download the source code from GitHub
-- https://gitlab.unige.ch/salbreux-group/konstantinos-andreadis/nemo.git
+- Download the source code from GitHub (https://gitlab.unige.ch/salbreux-group/konstantinos-andreadis/nemo.git)
+- Or extract the .zip file if sent privately.
 
-2. Install the required dependencies:
+2. Install the required dependencies in the virtual environment:
 
     ```bash
     pip install -r requirements.txt  
@@ -104,22 +126,16 @@ You can customize the pipeline by combining modules from the **`scripts/`** fold
 
 The **`scripts/`** folder contains Python scripts with modular functions that can be (re-)combined for batch analysis or
 used individually within the main notebook.
+
 Each script serves a different purpose, such as image/mesh analysis, data input/output handling, visualisation or
 generation of test data.
 
-### Adding New Modules
-
-To add a new module:
-
-1. Create a new Python script in the **`scripts/`** folder.
-2. Define a main function that takes input and outputs results.
-3. Ensure the script follows the expected input-output format for pipeline integration.
 
 ---
 
 ## 🪲 **Debugging**
 
-- The **`debugging/`** folder contains scripts and logs that help diagnose issues.
+- The **`debugging/`** folder contains scripts and logs that help diagnose issues or develop new modules.
 - If you encounter problems during execution, please test your tools in the  **`sandbox.ipynb`** using Jupyter:
 
     ```bash
@@ -135,8 +151,9 @@ To add a new module:
 
 ## 🛠️ **Contributing**
 
-Contributions are welcome! Please fork the repository and submit a pull request with your improvements.
-Make sure to follow the existing code style and include appropriate documentation.
+Contributions are welcome!
+
+If you have an idea for a new module that should be added to NEMO, please contact me :)
 
 ---
 
@@ -150,7 +167,9 @@ rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 persons to whom the Software is furnished to do so, subject to the following conditions:
 
 - **Citation Requirement**: If the Software is used directly or indirectly in any scientific publication or
-  presentation, proper citation of the original work is required.
+  presentation, proper citation of the original work and author is required.
 
-- Please cite the project as follows: t.b.a.
+- Please cite the project as shown below:
+
+**[!] publication incl. NEMO to be announced  [!]**
  
