@@ -1337,7 +1337,7 @@ def patch_surface_integral(mesh, value, patch_idxs, debug=False):
         areas = np.linalg.norm(np.cross(p1 - p0, p2 - p0), axis=1) / 2
         avg_val = np.nanmean([value[v0], value[v1], value[v2]])
         patch_integrals.append(np.nansum(avg_val * areas))
-    patch_integrals = np.array(patch_integrals)
+    patch_integrals = np.array(patch_integrals) / (2 * np.pi)
     if debug:
         print(f"-- surface integrals = {patch_integrals}")
     return patch_integrals
@@ -1367,27 +1367,34 @@ def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
 
 def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, correct_orientation=True, debug=False):
     topological_charges = []
-    for i in range(len(loop_idxs)):
-        patch_indeces = loop_idxs[i]
-        normal_sel = normals[patch_indeces]
-        dir_indices = np.searchsorted(director_indeces, patch_indeces)
-        if dir_indices.max() == len(directors):
-            print(f"Weird sorting bug, using max - 1...")
-            dir_indices -= 1
-        directors_vec_sel = directors[dir_indices][:, 3:]
-        p_current = directors_vec_sel
-        p_next = np.roll(directors_vec_sel, -1, axis=0)
+
+    # Ensure director_indeces is a dict for fast lookup
+    index_map = {idx: i for i, idx in enumerate(director_indeces)}
+
+    for patch_indices in loop_idxs:
+        normal_sel = normals[patch_indices]
+        dir_indices = np.array([index_map[idx] for idx in patch_indices])
+
+        p_current = directors[dir_indices][:, 3:]
+        p_next = np.roll(p_current, -1, axis=0)
+
         if correct_orientation:
-            p_next *= np.sign(np.einsum('ij,ij->i', p_current, p_next))[:, np.newaxis]
+            signs = np.sign(np.einsum('ij,ij->i', p_current, p_next))
+            p_next *= signs[:, None]
 
         pdiff = p_next - p_current
-        dot_prod_pdiff_normal = np.einsum('ij,ij->i', pdiff, normal_sel)
-        dot_prod_normal_normal = np.einsum('ij,ij->i', normal_sel, normal_sel)
-        pdiff_proj = pdiff - (dot_prod_pdiff_normal[:, None] / dot_prod_normal_normal[:, None]) * normal_sel
-        cross_pdiff_proj_pcurrent = np.cross(pdiff_proj, p_current)
-        dot_prod_pdiff_proj_normal = np.einsum('ij,ij->i', cross_pdiff_proj_pcurrent, normal_sel)
-        m = np.sum(dot_prod_pdiff_proj_normal) / (2 * np.pi)
+
+        normal_sel /= np.linalg.norm(normal_sel, axis=1, keepdims=True)
+
+        dot = np.einsum('ij,ij->i', pdiff, normal_sel)
+        pdiff_proj = pdiff - dot[:, None] * normal_sel
+
+        cross = np.cross(pdiff_proj, p_current)
+        winding_contrib = np.einsum('ij,ij->i', cross, normal_sel)
+
+        m = np.sum(winding_contrib) / (2 * np.pi)
         topological_charges.append(m)
+
     if debug:
         print(f"-- line charge m = {topological_charges}")
     return topological_charges
@@ -1401,7 +1408,7 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                                                  debug=debug)
     m_gauss_contribution = patch_surface_integral(mesh=mesh, value=c_gauss,
                                                   patch_idxs=charge_patch_broad,
-                                                  debug=debug) / (2 * np.pi)
+                                                  debug=debug)
     calc_charge_loop_idxs = find_boundary_indeces(mesh, [np.intersect1d(loop, director_indeces) for loop in
                                                          charge_patch_broad],
                                                   tan_x=tan_x, tan_y=tan_y,
