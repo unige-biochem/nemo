@@ -7,11 +7,12 @@ Author: Konstantinos Andreadis
 # IMPORT LIBRARIES #
 ####################
 import pandas as pd
-import os
+import os, re, sys
 import numpy as np
 import tifffile
 import trimesh
 from scripts.analysis import clean_mesh
+from PIL import Image
 
 
 #####################
@@ -55,6 +56,27 @@ def save_tiff(array, filepath):
     print(f">> Saving tiff {filepath}...")
     create_dir(os.path.dirname(filepath))
     tifffile.imwrite(filepath, array.astype(np.float32))
+
+
+def load_png(filepath):
+    if not os.path.exists(filepath):
+        print(f"{filepath} does not exist, exiting...")
+        return None
+    else:
+        return np.array(Image.open(filepath))
+
+
+def save_gif_multiple(folderpath, frame_len_ms=100):
+    files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
+    suffixes = np.unique([re.match(r"z-\d+(_.+)\.png", f).group(1) for f in files])
+    for suf in suffixes:
+        print(f">> Saving gif for {suf}...")
+        matched = sorted([f for f in files if f.endswith(suf + ".png")],
+                         key=lambda x: int(re.search(r"z-(\d+)_", x).group(1)))
+        imgs = list(map(lambda f: Image.open(os.path.join(folderpath, f)), matched))
+        imgs[0].save(os.path.join(folderpath, suf[1:] + ".gif"), save_all=True, append_images=imgs[1:],
+                     duration=frame_len_ms, loop=0)
+    print(f">> Saved {len(suffixes)} gif files in {folderpath}!")
 
 
 ####################

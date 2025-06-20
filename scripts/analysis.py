@@ -744,32 +744,6 @@ def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debu
     return C_gauss, C_mean, Gauss_idxs, mean_idxs
 
 
-def expand_curvature_results(mesh, curvature_analysis, k_start=50, k_increment=50, max_k=500):
-    print(f">> Expanding curvature analysis to mesh...")
-    C_gauss, C_mean, Gauss_idxs, mean_idxs = curvature_analysis
-    full_C_gauss = np.full(mesh.vertices.shape[0], np.nan)
-    full_C_mean = np.full(mesh.vertices.shape[0], np.nan)
-    full_C_gauss[Gauss_idxs] = C_gauss
-    full_C_mean[mean_idxs] = C_mean
-    uncalc_c_gauss = np.setdiff1d(np.arange(mesh.vertices.shape[0]), Gauss_idxs)
-    uncalc_c_mean = np.setdiff1d(np.arange(mesh.vertices.shape[0]), mean_idxs)
-    k = k_start
-    while np.isnan(full_C_gauss).sum() != 0 and np.isnan(full_C_mean).sum() != 0:
-        if k > max_k:
-            print(f"Gave up after trying k up to {k}!")
-            break
-        print(f"Trying k={k}...")
-        try:
-            idxs = coord_search_neighbours(mesh.vertices, k=k)
-            full_C_gauss[uncalc_c_gauss] = np.nanmean(full_C_gauss[idxs[uncalc_c_gauss]], axis=1)
-            full_C_mean[uncalc_c_mean] = np.nanmean(full_C_mean[idxs[uncalc_c_mean]], axis=1)
-        except RuntimeWarning:
-            print("Failed to find neighbours...")
-        k += k_increment
-    print("Finished !")
-    return full_C_gauss, full_C_mean
-
-
 def density_estimate(mesh, k=30, debug=False, crop_range=None):
     print(f">> Density estimation for {len(mesh.vertices)} vertices with k = {k}...")
     idxs, dists = coord_search_neighbours(mesh.vertices, k=k, debug=False, return_dists=True)
@@ -817,26 +791,21 @@ def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None):
         return cropped_distances, cropped_indeces
 
 
-def expand_distance_results(mesh, distance_analysis, k_start=50, k_increment=50, max_k=500):
-    print(f">> Expanding curvature analysis to mesh...")
-    distances, dist_indeces = distance_analysis
-    full_distances = np.full(mesh.vertices.shape[0], np.nan)
-    full_distances[dist_indeces] = distances,
-    uncalc_dists = np.setdiff1d(np.arange(mesh.vertices.shape[0]), dist_indeces)
-    k = k_start
-    while np.isnan(full_distances).sum() != 0:
-        if k > max_k:
-            print(f"Gave up after trying k up to {k}!")
-            break
-        print(f"Trying k={k}...")
-        try:
-            idxs = coord_search_neighbours(mesh.vertices, k=k)
-            full_distances[uncalc_dists] = np.nanmean(full_distances[idxs[uncalc_dists]], axis=1)
-        except:
-            print("Failed to find neighbours...")
-        k += k_increment
-    print("Finished !")
-    return full_distances
+def interpolate_on_mesh(mesh, value_idxs, values, k=10, eps=1e-8):
+    print(f">> Interpolating {len(values)} values on mesh of {len(mesh.vertices)} vertices with k = {k}...")
+    known_pts = mesh.vertices[value_idxs]
+    all_pts = mesh.vertices
+    dists, idxs = KDTree(known_pts).query(all_pts, k=k)
+    dists = dists[:, 1:]
+    idxs = idxs[:, 1:]
+    dists = dists + eps
+
+    weights = 1.0 / dists
+    weight_sums = weights.sum(axis=1, keepdims=True)
+    weights /= weight_sums
+    gathered_values = values[idxs]
+    interpolated = np.einsum("ij,ij->i", gathered_values, weights)
+    return interpolated
 
 
 def geodesic_distmesh(mesh, index1, index2, debug=False):
@@ -858,7 +827,7 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
 
 
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
-              figsize=(7, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False):
+              figsize=(12, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False):
     num_dist = int(num_dist)
     print(
         f">> Projecting {mode} image intensities on {len(mesh.vertices)} verts using {interp_method} interpolation method...")
@@ -947,6 +916,16 @@ def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_
     return radial_stack, stack_coords
 
 
+def contour_masks(masks):
+    masks = masks.copy().astype(float)
+    masks[masks == 0] = np.nan
+    contours_all = []
+    for label in np.unique(masks[~np.isnan(masks)]):
+        contours = measure.find_contours(masks == label, 0.5)
+        contours_all.extend(contours)
+    return contours_all
+
+
 def find_medial_axis(img, scale=(1, 1, 1)):
     medial_axis_raw = np.argwhere(medial_axis(img))
     medial_axis_scaled = medial_axis_raw[:, [1, 0]] * scale[1:]
@@ -1010,10 +989,21 @@ def bin_array_with_indices(values, n_bins):
     return binned_indices
 
 
-def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
+def bin_indices(values, edges):
+    bin_ids = np.digitize(values, edges) - 1
+    valid = (bin_ids >= 0) & (bin_ids < len(edges) - 1)
+    binned = [[] for _ in range(len(edges) - 1)]
+    for idx, valid_flag in zip(np.arange(len(values)), valid):
+        if valid_flag:
+            binned[bin_ids[idx]].append(idx)
+    return [np.array(b, dtype=int) for b in binned]
+
+
+def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
                   nematic_weights):
     ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
-                                                                  bins_idxs=ap_par_binned_idxs, weights=nematic_weights)
+                                                                  bins_idxs=ap_par_binned_idxs,
+                                                                  weights=nematic_weights)
     ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
                                                                     bins_idxs=ap_orth_binned_idxs,
                                                                     weights=nematic_weights)
@@ -1030,8 +1020,6 @@ def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_or
                                   ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw)
     ap_par_binned_dirs = []
     ap_orth_binned_dirs = []
-    s_parallel_bin_centers = []
-    s_orthogonal_bin_centers = []
     s_par_orthogonality = []
     s_orth_orthogonality = []
     s_par_orthogonality_unw = []
@@ -1043,7 +1031,6 @@ def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_or
 
     for i_, parallel_bin_idxs in enumerate(ap_par_binned_idxs):
         ap_par_binned_dirs.append(directors[parallel_bin_idxs])
-        s_parallel_bin_centers.append(np.mean(s_parallel[parallel_bin_idxs], axis=0))
         _, indices = curve_pt_tree.query(directors[:, :2][parallel_bin_idxs])
         local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
         local_normals = np.mean(local_normals, axis=0)
@@ -1053,22 +1040,19 @@ def bin_directors(directors, s_parallel, s_orthogonal, ap_par_binned_idxs, ap_or
 
     for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
         ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
-        s_orthogonal_bin_centers.append(np.mean(s_orthogonal[orthogonal_bin_idxs], axis=0))
         _, indices = curve_pt_tree.query(directors[:, :2][orthogonal_bin_idxs])
         local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
         local_normals = np.mean(local_normals, axis=0)
         local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
         s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
         s_orth_orthogonality_unw.append(np.abs(np.dot(ap_orth_binned_n_2d_unw[i_], local_normals)))
-    s_parallel_bin_centers = np.array(s_parallel_bin_centers)
-    s_orthogonal_bin_centers = np.array(s_orthogonal_bin_centers)
     s_par_orthogonality = np.array(s_par_orthogonality)
     s_orth_orthogonality = np.array(s_orth_orthogonality)
     s_par_orthogonality_unw = np.array(s_par_orthogonality_unw)
     s_orth_orthogonality_unw = np.array(s_orth_orthogonality_unw)
 
-    parallel_results = ap_par_binned_dirs, s_parallel_bin_centers, s_par_orthogonality, s_par_orthogonality_unw
-    orthogonal_results = ap_orth_binned_dirs, s_orthogonal_bin_centers, s_orth_orthogonality, s_orth_orthogonality_unw
+    parallel_results = ap_par_binned_dirs, s_par_orthogonality, s_par_orthogonality_unw
+    orthogonal_results = ap_orth_binned_dirs, s_orth_orthogonality, s_orth_orthogonality_unw
     return parallel_results, orthogonal_results, nematic_results, nematic_results_unweighted
 
 
@@ -1270,7 +1254,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
     return directors
 
 
-def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
+def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, num_iterations=1):
     print(f">> Averaging the nematic tensor in basis t1 t2 ...")
     N = len(t1_cov)
 
@@ -1288,30 +1272,39 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
 
     q_tilde = np.array([tensprod(q[i], t_outer[i]) for i in range(N)])
 
-    q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
-    qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
-                                   tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
-                                  [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
-                                   tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
-    eigvals, eigvecs = np.linalg.eigh(qij_bar)
-    max_indeces = np.argmax(eigvals, axis=1)
-    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-    S_order = max_eigvals * 2
-    n_avg = (max_eigvecs[:, 0, np.newaxis] * t1_cov) + (max_eigvecs[:, 1, np.newaxis] * t2_cov)
-    n_avg = n_avg / np.linalg.norm(n_avg, axis=1, keepdims=True)
-    if debug:
-        print(f"directors = \n {directors[:, 3:]}")
-        print(f"n_locals with shape {n_locals.shape} = \n {n_locals}")
-        print(f"t_outer with shape {t_outer.shape}")
-        print(f"q with shape {q.shape} = \n {q}")
-        print(f"q_tilde with shape {q_tilde.shape} = \n {q_tilde}")
-        print(f"q_tilde_avg with shape {q_tilde_avg.shape} = \n {q_tilde_avg}")
-        print(f"q_bar with shape {qij_bar.shape} = \n {qij_bar}")
-        print(f"S_order with shape {S_order.shape} = \n {S_order}")
-        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg
+    S_order_all = []
+    n_avg_all = []
+    for avg_iter in range(num_iterations):
+        if num_iterations > 1:
+            print(f"Averaging step: {avg_iter}...")
+        q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
+        qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
+                                       tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
+                                      [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
+                                       tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
+        eigvals, eigvecs = np.linalg.eigh(qij_bar)
+        max_indeces = np.argmax(eigvals, axis=1)
+        max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
+        max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
+        max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
+        S_order = max_eigvals * 2
+        n_avg = (max_eigvecs[:, 0, np.newaxis] * t1_cov) + (max_eigvecs[:, 1, np.newaxis] * t2_cov)
+        n_avg = n_avg / np.linalg.norm(n_avg, axis=1, keepdims=True)
+        S_order_all.append(S_order)
+        n_avg_all.append(n_avg)
+        q_tilde = q_tilde_avg.copy()
+
+        if debug:
+            print(f"directors = \n {directors[:, 3:]}")
+            print(f"n_locals with shape {n_locals.shape} = \n {n_locals}")
+            print(f"t_outer with shape {t_outer.shape}")
+            print(f"q with shape {q.shape} = \n {q}")
+            print(f"q_tilde with shape {q_tilde.shape} = \n {q_tilde}")
+            print(f"q_tilde_avg with shape {q_tilde_avg.shape} = \n {q_tilde_avg}")
+            print(f"q_bar with shape {qij_bar.shape} = \n {qij_bar}")
+            print(f"S_order with shape {S_order.shape} = \n {S_order}")
+            print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
+    return S_order_all, n_avg_all
 
 
 def unique_neighborhoods(arr):
