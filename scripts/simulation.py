@@ -13,8 +13,10 @@ from scipy.ndimage import gaussian_filter
 #################
 # BASIC MODULES #
 #################
-def random_tangential(t1, t2):
+def random_tangential(t1, t2, seed=None):
     print(">> Randomising tangential vector field...")
+    if seed is not None:
+        np.random.seed(seed)
     return t1 * np.random.uniform(-1, 1, size=(len(t1), 1)) + t2 * np.random.uniform(-1, 1, size=(
         len(t2), 1))
 

@@ -723,7 +723,7 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
                    view_init=None, title=None, savefig="", dpi=200, veccolor="red", cmap_label="cmap_label",
                    cmap="Spectral", show_axes=True, xlim=None, ylim=None, zlim=None, aspect="equal", hide_cmap=False,
                    marker=None, pt_label="marker_label", pt_size=100, pt_style="o", pt_color="yellow", pt_alpha=1.0,
-                   manual_vminmax=None, hidefig=False):
+                   manual_vminmax=None, hidefig=False, vec_alpha=1.0):
     print(">> Plotting director field...")
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection='3d')
@@ -755,7 +755,7 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
         else:
             norm = plt.Normalize(vmin=np.min(veccolor), vmax=np.max(veccolor))
         ax.quiver(centered_x, centered_y, centered_z, vx, vy, vz, length=veclength,
-                  arrow_length_ratio=0.0, label="Director",
+                  arrow_length_ratio=0.0, label="Director", alpha=vec_alpha,
                   color=colormaps[cmap](norm(veccolor)), cmap=cmap)
         if not hide_cmap:
             sm = plt.cm.ScalarMappable(cmap=colormaps[cmap], norm=norm)
@@ -763,7 +763,7 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
             fig.colorbar(sm, ax=ax, label=cmap_label)
     else:
         ax.quiver(centered_x, centered_y, centered_z, vx, vy, vz, color=veccolor, length=veclength,
-                  arrow_length_ratio=0.0, label="Director")
+                  arrow_length_ratio=0.0, label="Director", alpha=vec_alpha)
     if marker is not None:
         ax.scatter(marker[:, 0], marker[:, 1], marker[:, 2], marker=pt_style, color=pt_color, label=pt_label, s=pt_size,
                    alpha=pt_alpha)

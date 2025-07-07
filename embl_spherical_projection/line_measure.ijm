@@ -3,9 +3,9 @@
 // Author: Konstantinos Andreadis
 
 getDimensions(width, height, channels, slices, frames);
-open("..../coordinate_metadata.tiff"); // [!] Specify Path for input metadata TIFF [!]
+open("/Users/andreadi/Library/CloudStorage/OneDrive-UniversitédeGenève/Academic/Data/4_collaborations/magdalena_embl/time-lapse/CTL_TG_His_lyn_E25_20230926_block1_New-01And-2To7-TP10To13_radial_hyperstack_coords.tiff"); // [!] Specify Path for input metadata TIFF [!]
 rename("MetadataTIFF");
-outputPath = "..../arc_lengths.csv"; // [!] Specify Path for output CSV [!]
+outputPath = "/Users/andreadi/Library/CloudStorage/OneDrive-UniversitédeGenève/Academic/Data/4_collaborations/magdalena_embl/time-lapse/test.csv"; // [!] Specify Path for output CSV [!]
 run("Make Substack...", "channels=1,2,3 stack");
 
 run("ROI Manager...");

@@ -821,6 +821,33 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
     return geodesic_distance
 
 
+from itertools import combinations
+
+
+def select_geodesic_defects(order, mesh, idxs_sel, dist_cutoff=50, max_candidates=10, unit="px"):
+    candidate_order = np.argsort(order)[:max_candidates]
+    selected = []
+
+    for i in candidate_order:
+        mesh_idx = idxs_sel[i]
+        if not selected:
+            selected.append(i)
+            continue
+        dists = [geodesic_distmesh(mesh, mesh_idx, idxs_sel[j], debug=False) for j in selected]
+        if all(d > dist_cutoff for d in dists):
+            selected.append(i)
+
+    print(f"Found {len(selected)} defects!")
+    print("Relative distances between selected defects:")
+    rel_dists = []
+    for i, j in combinations(selected, 2):
+        d = geodesic_distmesh(mesh, idxs_sel[i], idxs_sel[j], debug=False)
+        rel_dists.append([i, j, d])
+        print(f"#{i} <-> #{j} = {d:.2f} {unit}")
+    rel_dists = np.array(rel_dists)
+    return selected, rel_dists
+
+
 ######################
 # PROJECTION MODULES #
 ######################
@@ -1254,7 +1281,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
     return directors
 
 
-def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, num_iterations=1):
+def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
     print(f">> Averaging the nematic tensor in basis t1 t2 ...")
     N = len(t1_cov)
 
@@ -1272,39 +1299,30 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, num_ite
 
     q_tilde = np.array([tensprod(q[i], t_outer[i]) for i in range(N)])
 
-    S_order_all = []
-    n_avg_all = []
-    for avg_iter in range(num_iterations):
-        if num_iterations > 1:
-            print(f"Averaging step: {avg_iter}...")
-        q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
-        qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
-                                       tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
-                                      [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
-                                       tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
-        eigvals, eigvecs = np.linalg.eigh(qij_bar)
-        max_indeces = np.argmax(eigvals, axis=1)
-        max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-        max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-        max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-        S_order = max_eigvals * 2
-        n_avg = (max_eigvecs[:, 0, np.newaxis] * t1_cov) + (max_eigvecs[:, 1, np.newaxis] * t2_cov)
-        n_avg = n_avg / np.linalg.norm(n_avg, axis=1, keepdims=True)
-        S_order_all.append(S_order)
-        n_avg_all.append(n_avg)
-        q_tilde = q_tilde_avg.copy()
-
-        if debug:
-            print(f"directors = \n {directors[:, 3:]}")
-            print(f"n_locals with shape {n_locals.shape} = \n {n_locals}")
-            print(f"t_outer with shape {t_outer.shape}")
-            print(f"q with shape {q.shape} = \n {q}")
-            print(f"q_tilde with shape {q_tilde.shape} = \n {q_tilde}")
-            print(f"q_tilde_avg with shape {q_tilde_avg.shape} = \n {q_tilde_avg}")
-            print(f"q_bar with shape {qij_bar.shape} = \n {qij_bar}")
-            print(f"S_order with shape {S_order.shape} = \n {S_order}")
-            print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order_all, n_avg_all
+    q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
+    qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
+                                   tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
+                                  [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
+                                   tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
+    eigvals, eigvecs = np.linalg.eigh(qij_bar)
+    max_indeces = np.argmax(eigvals, axis=1)
+    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
+    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
+    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
+    S_order = max_eigvals * 2
+    n_avg = (max_eigvecs[:, 0, np.newaxis] * t1_cov) + (max_eigvecs[:, 1, np.newaxis] * t2_cov)
+    n_avg = n_avg / np.linalg.norm(n_avg, axis=1, keepdims=True)
+    if debug:
+        print(f"directors = \n {directors[:, 3:]}")
+        print(f"n_locals with shape {n_locals.shape} = \n {n_locals}")
+        print(f"t_outer with shape {t_outer.shape}")
+        print(f"q with shape {q.shape} = \n {q}")
+        print(f"q_tilde with shape {q_tilde.shape} = \n {q_tilde}")
+        print(f"q_tilde_avg with shape {q_tilde_avg.shape} = \n {q_tilde_avg}")
+        print(f"q_bar with shape {qij_bar.shape} = \n {qij_bar}")
+        print(f"S_order with shape {S_order.shape} = \n {S_order}")
+        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
+    return S_order, n_avg
 
 
 def unique_neighborhoods(arr):
