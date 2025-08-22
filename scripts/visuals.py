@@ -11,19 +11,20 @@ import os.path
 import shutil
 import matplotlib.pyplot as plt
 import napari
-from matplotlib.colors import ListedColormap
-from matplotlib.colors import Normalize
+from matplotlib.colors import ListedColormap, Normalize
 from matplotlib import colormaps
 import imageio
 from matplotlib import colors as pltcolors
 import matplotlib.gridspec as gridspec
-from collections import OrderedDict
 from scipy.interpolate import griddata
+import seaborn as sns
+import pandas as pd
 
 #################################
 # Dark/Light Mode for all Plots #
 #################################
-plt.style.use('dark_background')
+# plt.style.use('dark_background')
+plt.style.use('default')
 
 
 #################
@@ -392,7 +393,7 @@ def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figs
         plt.close()
 
 
-def plot_slice_heatmap(coords, values, img_dim, img_scale, grid_n=400, cmap_label="cmap_label", title="",
+def plot_slice_heatmap(coords, values, img_dim, img_scale, pt_size=20, grid_n=400, cmap_label="cmap_label", title="",
                        cmap="Spectral", manual_vminvmax=None, interp_method="cubic", savefig="", dpi=200,
                        figsize=(9, 5), hidefig=False):
     x, y = coords[:, 0], coords[:, 1]
@@ -408,7 +409,7 @@ def plot_slice_heatmap(coords, values, img_dim, img_scale, grid_n=400, cmap_labe
                cmap=cmap, aspect="auto", vmin=manual_vminvmax[0], vmax=manual_vminvmax[1])
     plt.colorbar(label=cmap_label)
     plt.title(title)
-    plt.scatter(x, y, c=values, cmap=cmap, edgecolor='k', vmin=manual_vminvmax[0], vmax=manual_vminvmax[1])
+    plt.scatter(x, y, c=values, cmap=cmap, edgecolor='k', vmin=manual_vminvmax[0], vmax=manual_vminvmax[1], s=pt_size)
     plt.gca().invert_yaxis()
     plt.gca().set_aspect('equal')
     plt.xlim(0, img_dim[2] * img_scale[2])
@@ -428,8 +429,8 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     configs = [
-        (ap_par_binned_dirs, ap_par_binned_idxs, "Binned Parallel", vmin_vmax_par),
-        (ap_orth_binned_dirs, ap_orth_binned_idxs, "Binned Orthogonal", vmin_vmax_orth),
+        (ap_par_binned_dirs, ap_par_binned_idxs, "Parallel Bins", vmin_vmax_par),
+        (ap_orth_binned_dirs, ap_orth_binned_idxs, "Orthogonal Bins", vmin_vmax_orth),
     ]
 
     for ax, (dirs, idxs, title, vlim) in zip(axes, configs):
@@ -449,7 +450,8 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
         ax.set_xlabel(f"X ({unit})")
         ax.set_ylabel(f"Y ({unit})")
         ax.invert_yaxis()
-        fig.colorbar(sc, ax=ax, label="Bin index")
+        cb = fig.colorbar(sc, ax=ax, label="Bin index", shrink=0.7, ticks=np.arange(vmin, vmax + 1))
+        cb.ax.set_yticklabels([str(i) for i in range(vmin, vmax + 1)])
         ax.set_title(title)
 
     plt.tight_layout()
@@ -463,16 +465,16 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
 
 
 def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 1, 1), unit="px", savefig="",
-                           dpi=200, figsize=(16, 6), pt_size=10, hidefig=False):
+                           dpi=200, figsize=(14, 6), curvewidth=3, pt_size=10, im_alpha=0.6, hidefig=False):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for ax, s_values, title, label in zip(
             axes,
             [s_parallel, s_orthogonal],
-            ["Parallel Coordinate", "Orthogonal Coordinate"],
-            ["parallel_coordinate", "orthogonal_coordinate"]
+            [f"A-P || coordinate ({unit})", f"A-P ⊥ coordinate ({unit})"],
+            [f"A-P || coordinate ({unit})", f"A-P ⊥ coordinate ({unit})"]
     ):
-        ax.imshow(img, cmap="gray", alpha=0.5, aspect=scale[1] / scale[2], origin="upper")
-        ax.plot(curve[:, 0] / scale[2], curve[:, 1] / scale[1], "r-", label="Centerline")
+        ax.imshow(img, cmap="gray", alpha=im_alpha, aspect=scale[1] / scale[2], origin="upper")
+        ax.plot(curve[:, 0] / scale[2], curve[:, 1] / scale[1], "k-", linewidth=curvewidth, label="Centerline")
         sc = ax.scatter(pts[:, 0] / scale[2], pts[:, 1] / scale[1], c=s_values, cmap="Spectral",
                         label=label, s=pt_size)
         ax.set_xlabel(f"X ({unit})")
@@ -498,8 +500,8 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
                                       ap_par_binned_s_2d_unweighted, ap_orth_binned_s_2d_unweighted,
                                       s_parallel_bin_centers, s_orthogonal_bin_centers,
                                       s_par_orthogonality_weighted, s_orth_orthogonality_weighted,
-                                      s_par_orthogonality_unweighted, s_orth_orthogonality_unweighted, figsize=(14, 8),
-                                      scale=(1, 1, 1), unit="px", savefig="", dpi=200, hidefig=False):
+                                      s_par_orthogonality_unweighted, s_orth_orthogonality_unweighted,
+                                      figsize=(16, 8), scale=(1, 1, 1), unit="px", savefig="", dpi=200, hidefig=False):
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(2, 2, width_ratios=[4, 6], height_ratios=[1, 1], wspace=0.2, hspace=0.3)
 
@@ -515,57 +517,58 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
     ax_img.set_yticks(np.linspace(0, img.shape[0], 5))
     ax_img.set_yticklabels(np.round(ax_img.get_yticks() * scale[1], 2))
 
-    # Bottom right: parallel profile
+    # Top: parallel profile
     ax_parallel = fig.add_subplot(gs[0, 1])
     ax_parallel.grid(color="grey", linestyle="--", alpha=0.5)
     ax_br_ax2 = ax_parallel.twinx()
-    ax_parallel.axhline(1, c="lightskyblue", linestyle="--", alpha=0.5)
+    ax_parallel.axhline(1, c="darkblue", linestyle="--", alpha=0.5)
     ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_weighted, "s-", label='Weighted by $AR-1$',
-                     color='lightskyblue', alpha=0.7)
-    ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_unweighted, "x--", label='Normalised',
-                     color='lightskyblue', alpha=0.7)
+                     color='darkblue', alpha=0.7)
+    # ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_unweighted, "x--", label='Normalised',
+    #                  color='darkblue', alpha=0.7)
     ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_weighted, "s-", label='Weighted by $AR-1$',
-                   color='tab:orange', alpha=0.7)
-    ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_unweighted, "x--", label='Normalised',
-                   color='tab:orange', alpha=0.7)
+                   color='brown', alpha=0.7)
+    # ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_unweighted, "x--", label='Normalised',
+    #                color='brown', alpha=0.7)
+
     ax_parallel.set_xlabel(f"A-P || coordinate ({unit})")
-    ax_parallel.set_ylabel('Nematic order $S$', color='lightskyblue')
-    ax_parallel.tick_params(axis='y', colors='lightskyblue')
-    ax_br_ax2.set_ylabel('Orthogonality', color='tab:orange')
-    ax_br_ax2.tick_params(axis='y', colors='tab:orange')
+    ax_parallel.set_ylabel('Nematic order $S$ weighted by $AR-1$', color='darkblue')
+    ax_parallel.tick_params(axis='y', colors='darkblue')
+    ax_br_ax2.set_ylabel('Orthogonality', color='brown')
+    ax_br_ax2.tick_params(axis='y', colors='brown')
     ax_br_ax2.set_ylim(-0.05, 1.05)
 
-    # Top right: orthogonal profile
+    # Bottom: orthogonal profile
     ax_orthogonal = fig.add_subplot(gs[1, 1])
-    ax_orthogonal.grid(color="lightskyblue", linestyle="--", alpha=0.5)
+    ax_orthogonal.grid(color="darkblue", linestyle="--", alpha=0.5)
     ax_tr_ax2 = ax_orthogonal.twinx()
-    ax_orthogonal.axhline(1, c="lightskyblue", linestyle="--", alpha=0.5)
+    ax_orthogonal.axhline(1, c="darkblue", linestyle="--", alpha=0.5)
     ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_weighted, "s-",
-                       label='Weighted by $AR-1$', color='lightskyblue', alpha=0.7)
-    ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_unweighted, "x--",
-                       label='Normalised', color='lightskyblue', alpha=0.7)
+                       label='Weighted by $AR-1$', color='darkblue', alpha=0.7)
+    # ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_unweighted, "x--",
+    #                    label='Normalised', color='darkblue', alpha=0.7)
     ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_weighted, "o-", label='Weighted by $AR-1$',
-                   color='tab:orange', alpha=0.7)
-    ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_unweighted, "x--", label='Normalised',
-                   color='tab:orange', alpha=0.7)
+                   color='brown', alpha=0.7)
+    # ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_unweighted, "x--", label='Normalised',
+    #                color='brown', alpha=0.7)
     ax_orthogonal.set_xlabel(f"A-P ⊥ coordinate ({unit})")
-    ax_orthogonal.set_ylabel('Nematic order $S$', color='lightskyblue')
-    ax_orthogonal.tick_params(axis='y', colors='lightskyblue')
-    ax_tr_ax2.set_ylabel('Orthogonality', color='tab:orange')
-    ax_tr_ax2.tick_params(axis='y', colors='tab:orange')
+    ax_orthogonal.set_ylabel('Nematic order $S$ weighted by $AR-1$', color='darkblue')
+    ax_orthogonal.tick_params(axis='y', colors='darkblue')
+    ax_tr_ax2.set_ylabel('Orthogonality', color='brown')
+    ax_tr_ax2.tick_params(axis='y', colors='brown')
     ax_tr_ax2.set_ylim(-0.05, 1.05)
 
     ax_parallel.set_ylim(bottom=0.0)
     ax_orthogonal.set_ylim(bottom=0.0)
 
-    from matplotlib.lines import Line2D
-
-    custom_lines = [
-        Line2D([0], [0], linestyle='-', marker='s', color='white', label='Weighted by $AR-1$'),
-        Line2D([0], [0], linestyle='--', marker='x', color='white', label='Normalised'),
-    ]
-
-    fig.legend(handles=custom_lines, loc='upper center', ncol=2, frameon=True, bbox_to_anchor=(0.7, 0.95))
+    # from matplotlib.lines import Line2D
+    #
+    # custom_lines = [
+    #     Line2D([0], [0], linestyle='-', marker='s', color='k', label='Weighted by $AR-1$'),
+    #     Line2D([0], [0], linestyle='--', marker='x', color='k', label='Normalised'),
+    # ]
+    #
+    # fig.legend(handles=custom_lines, loc='upper center', ncol=2, frameon=True, bbox_to_anchor=(0.7, 0.95))
 
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
@@ -898,6 +901,59 @@ def plot_cmap(cmap_custom, distances, midpoint, savefigpath="", dpi=200, hidefig
         plt.close()
 
 
+def plot_violinplot_comparative(sequence_data, sequence_labels, title, sequence_label="Time", group_labels=None,
+                                group_name=None, figsize=(8, 5), savefig="", hidefig=False, dpi=200):
+    values = []
+    times = []
+    groups = []
+    for t_idx, time_point in enumerate(sequence_data):
+        for g_idx, group_data in enumerate(time_point):
+            values.extend(group_data)
+            times.extend([sequence_labels[t_idx]] * len(group_data))
+            groups.extend([group_labels[g_idx] if group_labels else f"Group {g_idx + 1}"] * len(group_data))
+
+    df = pd.DataFrame({title: values, sequence_label: times, "Group": groups})
+
+    plt.figure(figsize=figsize)
+    sns.violinplot(x=sequence_label, y=title, hue="Group", data=df, palette="Set2", inner=None)
+    sns.swarmplot(x=sequence_label, y=title, hue="Group", data=df, dodge=True, color="k", alpha=0.6, size=1.5,
+                  legend=False)
+    plt.title(title)
+    plt.legend(title=group_name)
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_violinplot(sequence_data, sequence_labels, title, sequence_label="Time", figsize=(8, 5), savefig="",
+                    hidefig=False, dpi=200):
+    values = []
+    groups = []
+    for label, seq in zip(sequence_labels, sequence_data):
+        values.extend(seq)
+        groups.extend([label] * len(seq))
+
+    df = pd.DataFrame({title: values, sequence_label: groups})
+
+    plt.figure(figsize=figsize)
+    sns.violinplot(x=sequence_label, y=title, data=df, inner=None)
+    sns.swarmplot(x=sequence_label, y=title, data=df, color="k", alpha=0.6, size=2, legend=False)
+    plt.title(title)
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
 #####################
 # 3D RENDER MODULES #
 #####################
@@ -975,7 +1031,7 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
 
 def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity=1.0, img=None, scale=None,
                       img_opacity=1.0, cmap_img="green", color_override=None, mesh_blending="opaque", markers=None,
-                      marker_colors="yellow", marker_size=5):
+                      marker_colors="yellow", marker_size=5, add_hidden_vector=False):
     print(">> Rendering colored mesh...")
 
     if type(vert_colors) == str:
@@ -998,14 +1054,15 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity
     if markers is not None:
         viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
-
+    if add_hidden_vector:
+        viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
     viewer.dims.ndisplay = 3
     napari.run()
 
 
 def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="none", mesh_opacity_list=None, img=None,
                                scale=None, img_opacity=1.0, cmap_img="green", color_override_list=None,
-                               mesh_blending_list=None, markers=None,
+                               mesh_blending_list=None, markers=None, add_hidden_vector=False,
                                marker_colors="yellow", marker_size=5, name_list=None):
     if color_override_list is None:
         color_override_list = [None for _ in range(len(mesh_list))]
@@ -1042,7 +1099,8 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
     if markers is not None:
         viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
-
+    if add_hidden_vector:
+        viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
     viewer.dims.ndisplay = 3
     napari.run()
 

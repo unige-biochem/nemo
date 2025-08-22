@@ -12,22 +12,19 @@ from tifffile import imread, TiffFile
 import zarr
 from scipy.spatial import KDTree
 from skimage import measure
-from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import gaussian_filter
+from scipy.interpolate import RegularGridInterpolator, griddata, splprep, splev
+from scipy.ndimage import gaussian_filter, binary_fill_holes, map_coordinates
 from scipy.optimize import least_squares
 import orientationpy as op
-from scipy.interpolate import griddata
 import scipy.sparse as sp
 from skimage.filters import threshold_yen
 import trimesh
-from trimesh import Trimesh
-from scipy.ndimage import binary_fill_holes
-from scipy.ndimage import map_coordinates
 from scripts.visuals import plot_dist_kymograph, plot_flattened_neighborhood, plot_interp_grid, plot_matrix
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 from sklearn.decomposition import PCA
 from skimage.morphology import medial_axis
+from itertools import combinations
 
 
 #################
@@ -154,6 +151,22 @@ def filter_valid_patches(verts, idxs_neigh, factor=0.1):
     valid_idxs = np.argwhere(keep_mask)[:, 0]
     print(f"{len(valid_patch_idxs)} valid, {len(centroids_patches) - len(valid_patch_idxs)} invalid ! ")
     return valid_patch_idxs, valid_idxs
+
+
+def filter_normal_validity(mesh, idxs_sel, k=10, threshold=0.2):
+    normals_all = mesh.vertex_normals
+    normals = normals_all[idxs_sel]
+    valid_norm_mask = np.linalg.norm(normals, axis=1) > 0
+    print(f"{np.sum(~valid_norm_mask)} zero-norm normals added to exclusion list !")
+    normals_valid = normals[valid_norm_mask]
+    normals_valid /= np.linalg.norm(normals_valid, axis=1, keepdims=True)
+    neigh_idxs = coord_search_neighbours(verts=mesh.vertices, k=k, n_process=8,
+                                         custom_probes=mesh.vertices[idxs_sel[valid_norm_mask]])
+    normals_valid_neigh_avg = np.mean(normals_all[neigh_idxs], axis=1)
+    normals_valid_neigh_avg /= np.linalg.norm(normals_valid_neigh_avg, axis=1, keepdims=True)
+    valid_orth_mask = np.sum(normals_valid * normals_valid_neigh_avg, axis=1) > threshold
+    print(f"{np.sum(~valid_orth_mask)} tangential normals added to exclusion list !")
+    return idxs_sel[valid_norm_mask][valid_orth_mask]
 
 
 def expand_2d_array(array, num):
@@ -764,12 +777,13 @@ def density_estimate(mesh, k=30, debug=False, crop_range=None):
     return densities, idxs
 
 
-def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None):
+def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None, allow_multiple_hits=False):
     print(
         f">> Calculating distance between two meshes ({mesh_1.vertices.shape[0]}, {mesh_2.vertices.shape[0]}) using {num_sample} samples...")
     random_idxs = np.random.choice(np.arange(mesh_1.vertices.shape[0]), size=num_sample)
     vertices_1, normals_1 = mesh_1.vertices[random_idxs], mesh_1.vertex_normals[random_idxs]
-    locations, index_ray, index_tri = mesh_2.ray.intersects_location(vertices_1, normals_1)
+    locations, index_ray, index_tri = mesh_2.ray.intersects_location(vertices_1, normals_1,
+                                                                     multiple_hits=allow_multiple_hits)
     distances = np.full(len(vertices_1), np.nan)
     dist_vector = locations - vertices_1[index_ray]
     distances[index_ray] = np.einsum('ij,ij->i', dist_vector, normals_1[index_ray])
@@ -819,9 +833,6 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
     if debug:
         print(f"Geodesic distance between vertex #{index1} and #{index2}: {geodesic_distance}")
     return geodesic_distance
-
-
-from itertools import combinations
 
 
 def select_geodesic_defects(order, mesh, idxs_sel, dist_cutoff=50, max_candidates=10, unit="px"):
@@ -954,13 +965,12 @@ def contour_masks(masks):
 
 
 def find_medial_axis(img, scale=(1, 1, 1)):
-    medial_axis_raw = np.argwhere(medial_axis(img))
+    medial_axis_raw = np.argwhere(medial_axis(img, mask=img > 0))
     medial_axis_scaled = medial_axis_raw[:, [1, 0]] * scale[1:]
     return medial_axis_scaled
 
 
 def spline_fit_curve(curve, order_k, num_pts, smooth, sample_interv, start_u, end_u):
-    from scipy.interpolate import splprep, splev
     x = curve[::sample_interv, 0]
     y = curve[::sample_interv, 1]
     tck = splprep([x, y], s=smooth, k=order_k)[0]
@@ -1077,7 +1087,6 @@ def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
     s_orth_orthogonality = np.array(s_orth_orthogonality)
     s_par_orthogonality_unw = np.array(s_par_orthogonality_unw)
     s_orth_orthogonality_unw = np.array(s_orth_orthogonality_unw)
-
     parallel_results = ap_par_binned_dirs, s_par_orthogonality, s_par_orthogonality_unw
     orthogonal_results = ap_orth_binned_dirs, s_orth_orthogonality, s_orth_orthogonality_unw
     return parallel_results, orthogonal_results, nematic_results, nematic_results_unweighted
@@ -1254,7 +1263,7 @@ def tan_interp_batch(coords, intensities, grid_size):
 
 
 def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None,
-                         debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None):
+                         debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None, debug_line_length=5):
     dir_vec = np.zeros(shape=(len(tan_x), 3))
     if debug:
         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
@@ -1264,7 +1273,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
                              tan_y[debug_idx]
         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
         plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
-                         points=tan_cords[debug_idx], theta=theta_center)
+                         points=tan_cords[debug_idx], theta=theta_center, linelength=debug_line_length)
         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
                     remove_axes=True)
     else:
