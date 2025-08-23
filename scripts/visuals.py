@@ -915,7 +915,7 @@ def plot_violinplot_comparative(sequence_data, sequence_labels, title, sequence_
     df = pd.DataFrame({title: values, sequence_label: times, "Group": groups})
 
     plt.figure(figsize=figsize)
-    sns.violinplot(x=sequence_label, y=title, hue="Group", data=df, palette="Set2", inner=None)
+    sns.violinplot(x=sequence_label, y=title, hue="Group", data=df, palette="Set2", inner="quartile")
     sns.swarmplot(x=sequence_label, y=title, hue="Group", data=df, dodge=True, color="k", alpha=0.6, size=1.5,
                   legend=False)
     plt.title(title)
@@ -931,7 +931,7 @@ def plot_violinplot_comparative(sequence_data, sequence_labels, title, sequence_
 
 
 def plot_violinplot(sequence_data, sequence_labels, title, sequence_label="Time", figsize=(8, 5), savefig="",
-                    hidefig=False, dpi=200):
+                    hidefig=False, dpi=200, ):
     values = []
     groups = []
     for label, seq in zip(sequence_labels, sequence_data):
@@ -941,8 +941,9 @@ def plot_violinplot(sequence_data, sequence_labels, title, sequence_label="Time"
     df = pd.DataFrame({title: values, sequence_label: groups})
 
     plt.figure(figsize=figsize)
-    sns.violinplot(x=sequence_label, y=title, data=df, inner=None)
+    sns.violinplot(x=sequence_label, y=title, data=df, inner="quartile")
     sns.swarmplot(x=sequence_label, y=title, data=df, color="k", alpha=0.6, size=2, legend=False)
+
     plt.title(title)
     plt.tight_layout()
     if savefig != "":
