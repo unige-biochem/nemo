@@ -12,7 +12,6 @@ from scripts import analysis, datahandler, visuals
 
 # Import python essentials
 import numpy as np
-import matplotlib.pyplot as plt
 import argparse, json
 import trimesh, tifffile
 import re, glob

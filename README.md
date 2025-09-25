@@ -45,24 +45,26 @@ The project is structured as follows:
 
 ```
 NEMO/  
-├── scripts/                    # Folder of Module Scripts
-│   ├── analysis.py             # Image / Mesh Analysis Modules
-│   ├── visuals.py              # Visualisation Modules
-│   ├── datahandler.py          # Input / Output Data Handling Modules
-│   └── simulation.py           # Simulation Modules
-├── debugging/                  # Folder of Debugging Scripts
-│   ├── fix_dependencies.ipynb  # Dependency Fix Notebook
-│   ├── sandbox.py              # Debugging Sandbox Notebook
-│   └── generator.py            # Simulation Notebook
-├── embl_spherical_projection/  # Folder of Spherical Projection (for EMBL)
-│   ├── spherical_projection.py # Automated Batch Script
-│   ├── run_params.json         # Batch Run Configuration
-│   ├── run.sh                  # Example Run Shell Script
-│   └── line_measure.ijm        # FIJI Module for Line Measurements
-├── main.ipynb                  # Main Pipeline Workspace Notebook
-├── batch_analysis.py           # Example Batch Analysis
-├── requirements.txt            # Required Python Libraries
-└── README.md                   # This File
+├── scripts/                         # Folder of Module Scripts
+│   ├── analysis.py                  # Image / Mesh Analysis Modules
+│   ├── visuals.py                   # Visualisation Modules
+│   ├── datahandler.py               # Input / Output Data Handling Modules
+│   └── simulation.py                # Simulation Modules
+├── debugging/                       # Folder of Debugging Scripts
+│   ├── fix_dependencies.ipynb       # Dependency Fix Notebook
+│   ├── sandbox.py                   # Debugging Sandbox Notebook
+│   └── generator.py                 # Simulation Notebook
+├── batch_analysis/                  # Folder of Batch Analysis Scripts
+│   ├── batch_analysis.py            # Example Batch Analysis
+│   ├── embl_spherical_projection/   # Folder of Spherical Projection (for EMBL)
+│   │   ├── EMBL_README.md           # Explanation README
+│   │   ├── spherical_projection.py  # Automated Batch Script
+│   │   ├── run_params.json          # Batch Run Configuration
+│   │   ├── run.sh                   # Example Run Shell Script
+│   └── └── line_measure.ijm         # FIJI Module for Line Measurements
+├── main.ipynb                       # Main Pipeline Workspace Notebook
+├── requirements.txt                 # Required Python Libraries
+└── README.md                        # This README
 ```  
 
 ---
@@ -74,9 +76,9 @@ NEMO/
 - Make sure you have exactly **Python 3.9.6** installed (to allow napari and trimesh to work correctly). You can check
   your version by running:
 
-    ```bash
-    python --version
-    ```  
+```bash
+python --version
+```  
 
 ### Installation
 
@@ -87,15 +89,36 @@ NEMO/
 
 2. Install the required dependencies in the virtual environment:
 
-    ```bash
-    pip install -r requirements.txt  
-    ```  
+If you have a working **Python 3.9.6** compiler installed, you can directly install all packages using:
+
+```bash
+pip install -r requirements.txt  
+```  
+
+However, if you have conda installed, you can also follow the following steps in your Anaconda prompt which have been
+tested and work:
+
+```bash
+conda create -n nemo_env python=3.9.6
+```
+
+```bash
+activate nemo_env
+```
+
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+jupyter lab
+```  
 
 3. If any of the dependencies are not installing correctly, please consult **`fix_dependencies.ipynb`** using Jupyter:
 
-    ```bash
-    jupyter fix_dependencies main.ipynb  
-    ```
+```bash
+jupyter fix_dependencies main.ipynb  
+```
 
 ---
 
@@ -105,13 +128,15 @@ NEMO/
 
 - The primary interface for interactive analysis is the **`main.ipynb`**. You can open it using Jupyter:
 
-    ```bash
-    jupyter notebook main.ipynb
-    ```
+```bash
+jupyter notebook main.ipynb
+```
+
+- Or, in conda, use
 
 ### Batch Analysis
 
-- The **`batch_analysis.py`** script allows batch processing by combining multiple modules.
+- The **`batch_analysis.py`** script inside the folder **`batch_analysis/`** allows batch processing by combining multiple modules.
 - To use it, simply configure your desired pipeline within the script and run:
 
     ```bash
@@ -138,14 +163,14 @@ generation of test data.
 - The **`debugging/`** folder contains scripts and logs that help diagnose issues or develop new modules.
 - If you encounter problems during execution, please test your tools in the  **`sandbox.ipynb`** using Jupyter:
 
-    ```bash
-    jupyter sandbox.ipynb  
-    ```
+```bash
+jupyter sandbox.ipynb  
+```
 - Or, if you wish to generate a .tiff, or e.g. curved director field, consult **`generator.ipynb`** using Jupyter:
 
-    ```bash
-    jupyter generator.ipynb  
-    ```
+```bash
+jupyter generator.ipynb  
+```
 
 ---
 
@@ -173,3 +198,4 @@ persons to whom the Software is furnished to do so, subject to the following con
 
 **[!] publication incl. NEMO to be announced  [!]**
  
+2024-2028 Copyright *Konstantinos Andreadis 

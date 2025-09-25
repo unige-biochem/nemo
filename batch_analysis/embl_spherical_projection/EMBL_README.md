@@ -52,11 +52,11 @@ img_name/
 - To use it using a custom .json dictionary file containing all parameters, run:
 
     ```bash
-    python .../nemo/embl_spherical_projection/spherical_projection.py --config ".../nemo/auto_spherical_projection/run_params.json"
+    python .../nemo/batch_analysis/embl_spherical_projection/spherical_projection.py --config ".../nemo/auto_spherical_projection/run_params.json"
     ```  
 - or else run it directly using the parsed arguments:
     ```bash
-    python .../nemo/embl_spherical_projection/spherical_projection.py --img_path ".../hyperstack.tif" --result_path ".../result_folder/" --segment --project --savetiff
+    python .../nemo/batch_analysis/embl_spherical_projection/spherical_projection.py --img_path ".../hyperstack.tif" --result_path ".../result_folder/" --segment --project --savetiff
     ```
 
 ---

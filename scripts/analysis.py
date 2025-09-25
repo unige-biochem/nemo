@@ -12,14 +12,14 @@ from tifffile import imread, TiffFile
 import zarr
 from scipy.spatial import KDTree
 from skimage import measure
-from scipy.interpolate import RegularGridInterpolator, griddata, splprep, splev
-from scipy.ndimage import gaussian_filter, binary_fill_holes, map_coordinates
+from scipy.interpolate import RegularGridInterpolator, splprep, splev
+from scipy.ndimage import gaussian_filter, binary_fill_holes
 from scipy.optimize import least_squares
 import orientationpy as op
 import scipy.sparse as sp
 from skimage.filters import threshold_yen
 import trimesh
-from scripts.visuals import plot_dist_kymograph, plot_flattened_neighborhood, plot_interp_grid, plot_matrix
+from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 from sklearn.decomposition import PCA
@@ -65,7 +65,7 @@ def coord_search_radius(verts, r):
     print(f">> Searching neighbours within radius {r} ...")
     tree = KDTreeSklearn(verts)
     idxs = tree.query_radius(verts, r=r)
-    return idxs
+    return list(idxs)
 
 
 def rot_x(alpha):
@@ -117,11 +117,19 @@ def tensprod(a, b):
     return np.tensordot(a, b, axes=2)
 
 
-def create_tangential_basis(normals, hide_output=True):
+def create_tangential_basis(normals, first_choice_axis=None, second_choice_axis=None, hide_output=True):
+    if first_choice_axis is None:
+        first_choice_axis = np.array([1, 0, 0])
+    if second_choice_axis is None:
+        second_choice_axis = np.array([0, 1, 0])
     if not hide_output:
-        print(f">> Creating tangential basis ...")
-    cross_basis_vector = np.where(np.all(np.isclose(np.cross(normals, [1, 0, 0]), 0), axis=1)[:, None],
-                                  [0, 1, 0], [1, 0, 0])
+        print(
+            f">> Creating tangential basis using cross product of normals with axis {first_choice_axis} or {second_choice_axis} if parallel...")
+    cross_basis_vector = np.where(
+        np.all(np.isclose(np.cross(normals, first_choice_axis), 0), axis=1)[:, None],
+        second_choice_axis,
+        first_choice_axis
+    )
     t1_raw = np.cross(normals, cross_basis_vector)
     t1_raw /= np.linalg.norm(t1_raw, axis=1, keepdims=True)
     t2_raw = np.cross(normals, t1_raw)
@@ -187,7 +195,7 @@ def expand_3d_array(array, num):
 # IMAGE PROCESSING MODULES #
 ############################
 def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_scaling=None, img_unit="um"):
-    print(f">> Importing image {path}...")
+    print(f">> Loading image {path}...")
     try:
         img_raw = imread(path)
     except:
@@ -295,7 +303,7 @@ def get_tiff_scaling(tif):
 
 
 def load_img_dimensions(path):
-    print(f">> Importing {path}...")
+    print(f">> Loading {path}...")
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
@@ -312,7 +320,7 @@ def load_img_dimensions(path):
 
 def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_unit=None, custom_scaling=None,
                      reduce_xy=1, reduce_z=1):
-    print(f">> Importing {path}...")
+    print(f">> Loading {path}...")
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
@@ -465,6 +473,18 @@ def sel_submesh(mesh, mask):
     masked_normals = normals[mask]
     masked_mesh = trimesh.Trimesh(vertices=masked_verts, faces=masked_faces, vertex_normals=masked_normals)
     return masked_mesh
+
+
+def find_connected_meshes(mesh):
+    pint(f">> Searching for connected component meshes...")
+    labels = trimesh.graph.connected_component_labels(mesh.face_adjacency)
+    components = []
+    for i in range(labels.max() + 1):
+        face_indices = (labels == i)
+        submesh = mesh.submesh([face_indices], append=True)
+        components.append(submesh)
+    print(f">> Found {len(components)} connected components!")
+    return components
 
 
 ###########################
@@ -684,9 +704,11 @@ def generate_sliced_mesh(img, img_scale, xres=1, yres=1, zres=1, normal_vec=None
 # MESH ANALYSIS MODULES #
 #########################
 def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debug=False, gauss_crop_range=None,
-                         mean_crop_range=None, boundary_excl_factor=0.1):
+                         mean_crop_range=None, boundary_excl_factor=0.1, use_original_vertices=False):
     print(f">> Calculating curvature for mesh with k={k} and for {num_sample}/{len(mesh.vertices)} vertices...")
     random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
+    if use_original_vertices:
+        random_idxs = np.arange(mesh.vertices.shape[0])
     verts = mesh.vertices[random_idxs]
     N = len(verts)
     normals = mesh.vertex_normals[random_idxs]
@@ -1038,18 +1060,18 @@ def bin_indices(values, edges):
 
 def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
                   nematic_weights):
-    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
-                                                                  bins_idxs=ap_par_binned_idxs,
-                                                                  weights=nematic_weights)
-    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens_bins(directors=directors,
-                                                                    bins_idxs=ap_orth_binned_idxs,
-                                                                    weights=nematic_weights)
-    ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens_bins(directors=directors,
-                                                                          bins_idxs=ap_par_binned_idxs,
-                                                                          weights=None)
-    ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens_bins(directors=directors,
-                                                                            bins_idxs=ap_orth_binned_idxs,
-                                                                            weights=None)
+    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens(directors=directors,
+                                                             neigh_idxs=ap_par_binned_idxs,
+                                                             weights=nematic_weights)
+    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens(directors=directors,
+                                                               neigh_idxs=ap_orth_binned_idxs,
+                                                               weights=nematic_weights)
+    ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
+                                                                     neigh_idxs=ap_par_binned_idxs,
+                                                                     weights=None)
+    ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
+                                                                       neigh_idxs=ap_orth_binned_idxs,
+                                                                       weights=None)
 
     nematic_results = (ap_par_binned_S_2d, ap_par_binned_n_2d,
                        ap_orth_binned_S_2d, ap_orth_binned_n_2d)
@@ -1144,42 +1166,26 @@ def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
     n_vecs = directors[:, 2:]
     n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
     q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
-    if weights is None:
-        q_avg = np.average(q[neigh_idxs], axis=1)
-    else:
-        w = weights[neigh_idxs][..., np.newaxis, np.newaxis]
-        q_avg = np.average(q[neigh_idxs] * w, axis=1)
-    eigvals, eigvecs = np.linalg.eigh(q_avg)
-    max_indeces = np.argmax(eigvals, axis=1)
-    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-    n_avg = max_eigvecs
-    S_order = max_eigvals * 2
-    if debug:
-        print(f"director components = \n {n_vecs}")
-        print(f"q with shape {q.shape} = \n {q}")
-        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
-        print(f"S_order with shape {S_order.shape} = \n {S_order}")
-        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg
 
-
-def avg_2d_nem_tens_bins(directors, bins_idxs, debug=False, weights=None):
-    if debug:
-        print("Averaging 2D nematic tensor...")
-    n_vecs = directors[:, 2:]
-    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
-
-    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
-    q_avg = []
-    for b in bins_idxs:
+    # --- handle nearest neighbours ---
+    if isinstance(neigh_idxs, np.ndarray):
         if weights is None:
-            q_avg.append(np.average(q[b], axis=0))
+            q_avg = np.average(q[neigh_idxs], axis=1)
         else:
-            w = weights[b][:, np.newaxis, np.newaxis]
-            q_avg.append(np.average(q[b] * w, axis=0))
-    q_avg = np.stack(q_avg)
+            w = weights[neigh_idxs][..., np.newaxis, np.newaxis]
+            q_avg = np.average(q[neigh_idxs] * w, axis=1)
+    else:
+        q_avg = []
+        for neigh in neigh_idxs:
+            if len(neigh) == 0:
+                q_avg.append(np.zeros((2, 2)))
+            else:
+                if weights is None:
+                    q_avg.append(np.mean(q[neigh], axis=0))
+                else:
+                    w = weights[neigh][..., np.newaxis, np.newaxis]
+                    q_avg.append(np.average(q[neigh] * w, axis=0))
+        q_avg = np.stack(q_avg)
     eigvals, eigvecs = np.linalg.eigh(q_avg)
     max_indeces = np.argmax(eigvals, axis=1)
     max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
@@ -1234,14 +1240,6 @@ def tan_proj(neighbors_coords, central_normal):
     local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
     local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
     return local_2d_coordinates, tangent_x_axes, tangent_y_axes
-
-
-def tan_interp(coords, intensities, grid_size):
-    u_min, u_max = coords[:, 0].min(), coords[:, 0].max()
-    v_min, v_max = coords[:, 1].min(), coords[:, 1].max()
-    grid_x, grid_y = np.meshgrid(np.linspace(u_min, u_max, grid_size), np.linspace(v_min, v_max, grid_size))
-    grid_z = griddata(coords, intensities, (grid_x, grid_y), method='nearest', fill_value=np.nan)
-    return grid_x, grid_y, grid_z
 
 
 def tan_interp_batch(coords, intensities, grid_size):
@@ -1308,7 +1306,18 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
 
     q_tilde = np.array([tensprod(q[i], t_outer[i]) for i in range(N)])
 
-    q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
+    # --- Handle neighbor averaging ---
+    if isinstance(neigh_idxs, np.ndarray):
+        q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
+    else:
+        q_tilde_avg = []
+        for i, neigh in enumerate(neigh_idxs):
+            if len(neigh) == 0:
+                q_tilde_avg.append(np.zeros((2, 2)))
+            else:
+                q_tilde_avg.append(np.average(q_tilde[neigh], axis=0))
+        q_tilde_avg = np.stack(q_tilde_avg)
+
     qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
                                    tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
                                   [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
@@ -1482,7 +1491,19 @@ def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
     n_vecs = directors[:, 3:]
     n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
     q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 3) * np.eye(3)[np.newaxis, :, :]
-    q_avg = np.average(q[neigh_idxs], axis=1)
+
+    # --- Handle neighbor averaging ---
+    if isinstance(neigh_idxs, np.ndarray):
+        q_avg = np.average(q[neigh_idxs], axis=1)
+    else:  # ragged list
+        q_avg = []
+        for neigh in neigh_idxs:
+            if len(neigh) == 0:
+                q_avg.append(np.zeros((3, 3)))
+            else:
+                q_avg.append(np.mean(q[neigh], axis=0))
+        q_avg = np.stack(q_avg)
+
     eigvals, eigvecs = np.linalg.eigh(q_avg)
     max_indeces = np.argmax(eigvals, axis=1)
     max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
@@ -1497,52 +1518,3 @@ def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
         print(f"S_order with shape {S_order.shape} = \n {S_order}")
         print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
     return S_order, n_avg
-
-
-def top_charge_bulk(vec_field, measure_centers, measure_radii, n_angle_bins=200, debug=False):
-    print(
-        f">> Calculating 3d defect charge for {len(measure_centers)} measuring spheres at angular resolution {n_angle_bins} for {len(vec_field)} vectors...")
-    points = vec_field[:, :3]
-    vectors = vec_field[:, 3:]
-    n_theta = n_angle_bins
-    n_phi = 2 * n_theta
-
-    # Angular grids
-    theta = np.linspace(1e-5, np.pi - 1e-5, n_theta)
-    phi = np.linspace(0, 2 * np.pi, n_phi)
-    dtheta = theta[1] - theta[0]
-    dphi = phi[1] - phi[0]
-    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing='ij')
-
-    # Spherical directions
-    sph_dx = np.sin(theta_grid) * np.cos(phi_grid)
-    sph_dy = np.sin(theta_grid) * np.sin(phi_grid)
-    sph_dz = np.cos(theta_grid)
-    sphere_dirs = np.stack([sph_dx, sph_dy, sph_dz], axis=-1)
-    sphere_offsets = measure_radii * sphere_dirs
-    sphere_offsets_flat = sphere_offsets.reshape(-1, 3)
-
-    charges = []
-
-    for center in measure_centers:
-        sample_pts = center + sphere_offsets_flat
-        interp_vectors = griddata(points, vectors, sample_pts, method="linear")
-
-        vecs = interp_vectors.reshape(n_theta, n_phi, 3)
-        norms = np.linalg.norm(vecs, axis=-1, keepdims=True)
-        n = vecs / (norms + 1e-12)
-
-        dn_dtheta = np.gradient(n, dtheta, axis=0)
-        dn_dphi = np.gradient(n, dphi, axis=1)
-
-        sin_theta = np.sin(theta_grid)
-        cross = np.cross(dn_dtheta, dn_dphi)
-        integrand = np.einsum("ijk,ijk->ij", n, cross) / (sin_theta + 1e-12)
-        integrand *= sin_theta
-        total = np.sum(integrand) * dtheta * dphi / (4 * np.pi)
-        charges.append(total)
-    m_charges = np.array(charges)
-    if debug:
-        print(f"Charges found: {charges}")
-        print(f"at positions: {measure_centers}")
-    return m_charges

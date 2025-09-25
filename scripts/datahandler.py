@@ -7,7 +7,7 @@ Author: Konstantinos Andreadis
 # IMPORT LIBRARIES #
 ####################
 import pandas as pd
-import os, re, sys
+import os, re
 import numpy as np
 import tifffile
 import trimesh

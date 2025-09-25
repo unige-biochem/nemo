@@ -19,12 +19,13 @@ import matplotlib.gridspec as gridspec
 from scipy.interpolate import griddata
 import seaborn as sns
 import pandas as pd
+import trimesh
 
-#################################
-# Dark/Light Mode for all Plots #
-#################################
-# plt.style.use('dark_background')
-plt.style.use('default')
+#############################################
+# [!!!] Dark/Light Mode for all Plots [!!!] #
+#############################################
+# plt.style.use('dark_background') # DARK
+plt.style.use('default')  # LIGHT
 
 
 #################
@@ -497,10 +498,8 @@ def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 
 
 
 def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, ap_orth_binned_s_2d_weighted,
-                                      ap_par_binned_s_2d_unweighted, ap_orth_binned_s_2d_unweighted,
                                       s_parallel_bin_centers, s_orthogonal_bin_centers,
                                       s_par_orthogonality_weighted, s_orth_orthogonality_weighted,
-                                      s_par_orthogonality_unweighted, s_orth_orthogonality_unweighted,
                                       figsize=(16, 8), scale=(1, 1, 1), unit="px", savefig="", dpi=200, hidefig=False):
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(2, 2, width_ratios=[4, 6], height_ratios=[1, 1], wspace=0.2, hspace=0.3)
@@ -560,16 +559,6 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
 
     ax_parallel.set_ylim(bottom=0.0)
     ax_orthogonal.set_ylim(bottom=0.0)
-
-    # from matplotlib.lines import Line2D
-    #
-    # custom_lines = [
-    #     Line2D([0], [0], linestyle='-', marker='s', color='k', label='Weighted by $AR-1$'),
-    #     Line2D([0], [0], linestyle='--', marker='x', color='k', label='Normalised'),
-    # ]
-    #
-    # fig.legend(handles=custom_lines, loc='upper center', ncol=2, frameon=True, bbox_to_anchor=(0.7, 0.95))
-
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -621,8 +610,6 @@ def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figs
     plt.figure(figsize=figsize)
     plt.scatter(local_2d_projection[:, 0], local_2d_projection[:, 1], c=neighbors_intensities, cmap='Greys_r', s=50)
     plt.colorbar(label='Fluorescence Intensity (a.u.)')
-    # plt.xticks([])
-    # plt.yticks([])
     plt.xlabel('Local X')
     plt.ylabel('Local y')
     plt.gca().set_aspect("equal")
@@ -646,7 +633,6 @@ def plot_interp_grid(grid_x, grid_y, grid_z, points, theta=None, hide_pts=False,
         x = np.array([-np.cos(theta), np.cos(theta)])
         y = np.array([-np.sin(theta), np.sin(theta)])
         plt.plot(linelength * x, linelength * y, color="red", linewidth=2)
-        # plt.quiver(0, 0, np.cos(theta), np.sin(theta), color="red", scale=3)
     plt.colorbar(contour, orientation='vertical', label='Fluorescence Intensity (a.u.)')
     plt.title('Interp. Neighbourhood')
     plt.gca().set_aspect("equal")
@@ -654,31 +640,6 @@ def plot_interp_grid(grid_x, grid_y, grid_z, points, theta=None, hide_pts=False,
     plt.yticks([])
     plt.xlabel('Local X')
     plt.ylabel('Local y')
-    if not hidefig:
-        plt.show()
-    else:
-        plt.close()
-
-
-def plot_vector_field_styles(x, y, u, v, defect, savefigpath="", figsize=(15, 5), dpi=200, hidefig=False):
-    fig, axes = plt.subplots(1, 3, figsize=figsize)
-    print(">> Plotting the vector field with(out) defect...")
-    axes[0].quiver(x, y, u, v, color='white', scale=20, pivot='middle', headaxislength=0)
-    axes[0].set_title(f"Headless Vectors for {defect} Defect")
-    axes[0].axis('equal')
-    axes[0].set_facecolor('black')
-    axes[1].quiver(x, y, u, v, color='white', scale=20, pivot='middle')
-    axes[1].set_title(f"Vectors with Heads for {defect} Defect")
-    axes[1].axis('equal')
-    axes[1].set_facecolor('black')
-    axes[2].streamplot(x, y, u, v, color='white', density=1, arrowstyle="-")
-    axes[2].set_title(f"Streamlines for {defect} Defect")
-    axes[2].axis('equal')
-    axes[2].set_facecolor('black')
-    plt.tight_layout()
-    if savefigpath != "":
-        create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefigpath, dpi=dpi, bbox_inches='tight')
     if not hidefig:
         plt.show()
     else:
@@ -878,27 +839,6 @@ def animate_img_slices(img, scale, unit, gifpath, gifsuffix, time_spacing=0.1, c
             os.remove(file)
         shutil.rmtree(temp_path, ignore_errors=True)
     print("Animation complete !")
-
-
-def plot_cmap(cmap_custom, distances, midpoint, savefigpath="", dpi=200, hidefig=False):
-    print(">> Visualising the cmap...")
-    min_val = np.min(distances)
-    max_val = np.max(distances)
-    norm_distances = plt.Normalize(vmin=np.min(distances), vmax=np.max(distances))
-    cmap_custom = cmap_custom(min_val, midpoint, max_val)
-    dist_color = cmap_custom(norm_distances(distances))
-    fig, ax = plt.subplots(figsize=(3, 0.4))
-    for i, color in enumerate(dist_color):
-        ax.add_patch(plt.Rectangle((i, 0), 1, 1, color=color))
-    ax.set_xlim(0, len(distances))
-    ax.set_ylim(0, 1)
-    if savefig != "":
-        create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefigpath, dpi=dpi, bbox_inches='tight')
-    if not hidefig:
-        plt.show()
-    else:
-        plt.close()
 
 
 def plot_violinplot_comparative(sequence_data, sequence_labels, title, sequence_label="Time", group_labels=None,
@@ -1171,7 +1111,7 @@ def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=
 def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=None, edge_width=0.3,
                                   vec_length=10, vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
                                   vector_style="line", img=None, scale=None, img_opacity=0.5, mesh=None,
-                                  mesh_shading="flat", mesh_blending="opaque"):
+                                  mesh_shading="flat", mesh_blending="opaque", centered_directors=True, vec_names=None):
     print(">> Rendering 3D vector field...")
     viewer = napari.Viewer()
     if img is not None and scale is not None:
@@ -1188,18 +1128,24 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
             opacity=pts_opacity,
             blending=pts_blending
         )
+    if vec_names is None:
+        vec_names = ["Layer" for _ in range(len(vec_pos))]
     for i in range(len(vec_pos)):
-        centered_x = vec_pos[i][:, 0] - 0.5 * vec_dir[i][:, 0] * vec_length
-        centered_y = vec_pos[i][:, 1] - 0.5 * vec_dir[i][:, 1] * vec_length
-        centered_z = vec_pos[i][:, 2] - 0.5 * vec_dir[i][:, 2] * vec_length
-        centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+        if centered_directors:
+            centered_x = vec_pos[i][:, 0] - 0.5 * vec_dir[i][:, 0] * vec_length
+            centered_y = vec_pos[i][:, 1] - 0.5 * vec_dir[i][:, 1] * vec_length
+            centered_z = vec_pos[i][:, 2] - 0.5 * vec_dir[i][:, 2] * vec_length
+            centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+        else:
+            centered_pos = vec_pos[i].copy()
         viewer.add_vectors(
             data=np.stack((centered_pos, vec_dir[i]), axis=1),
             edge_color=vec_colors[i],
             edge_width=edge_width,
             length=vec_length,
             opacity=vec_opacity,
-            vector_style=vector_style
+            vector_style=vector_style,
+            name=vec_names[i]
         )
     viewer.dims.ndisplay = 3
     napari.run()
@@ -1281,6 +1227,10 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
         vector_style=vector_style
     )
     if markers is not None:
+        if type(marker_colors) != str:
+            marker_colors = np.array(
+                [tuple(int(hex_code.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)) for hex_code in
+                 marker_colors])
         viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     viewer.dims.ndisplay = 3
@@ -1327,3 +1277,27 @@ def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, im
                       face_color=colors_mapped2, border_color=colors_mapped2, size=ptsize)
     viewer.dims.ndisplay = 3
     napari.run()
+
+
+def view_colored_labels_3d(segmentation_3d, scale, img=None, img_opacity=0.5):
+    viewer = napari.Viewer()
+    if img is not None:
+        viewer.add_image(img, scale=scale, opacity=img_opacity)
+    viewer.add_labels(segmentation_3d, name='segmentation', scale=scale)
+    viewer.dims.ndisplay = 3
+    napari.run()
+
+
+def create_ellipsoid_meshes(a, b, c, subdivisions=2):
+    base_sphere = trimesh.creation.icosphere(subdivisions=subdivisions, radius=1.0)
+    base_faces = base_sphere.faces
+    base_vertices = base_sphere.vertices
+    meshes = []
+
+    for i in range(len(a)):
+        center = a[i, :3]
+        axes = np.stack([a[i, 3:], b[i, 3:], c[i, 3:]], axis=1)
+        transformed = base_vertices @ axes.T + center
+        meshes.append(trimesh.Trimesh(vertices=transformed, faces=base_faces, process=False))
+
+    return trimesh.util.concatenate(meshes)

@@ -1,6 +1,6 @@
 {
-  "img_path": "/Users/andreadi/Downloads/lena_test.tif",
-  "result_path": "/Users/andreadi/Downloads/EMBL_RESULTS/",
+  "img_path": "/Users/andreadi/Downloads/EMBL_TEST/TEST.tif",
+  "result_path": "/Users/andreadi/Downloads/EMBL_TEST/",
   "segment": true,
   "project": true,
   "savetiff": true,
