@@ -13,6 +13,7 @@ import tifffile
 import trimesh
 from scripts.analysis import clean_mesh
 from PIL import Image
+import imageio.v2 as imageio
 
 
 #####################
@@ -77,6 +78,48 @@ def save_gif_multiple(folderpath, frame_len_ms=100):
         imgs[0].save(os.path.join(folderpath, suf[1:] + ".gif"), save_all=True, append_images=imgs[1:],
                      duration=frame_len_ms, loop=0)
     print(f">> Saved {len(suffixes)} gif files in {folderpath}!")
+
+
+def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
+    files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
+    suffixes = np.unique([re.match(r"z-\d+(_.+)\.png", f).group(1) for f in files])
+    fps = 1000 / frame_len_ms
+
+    def pad_to_size(img, target_shape, fill=0):
+        h, w = img.shape[:2]
+        th, tw = target_shape[:2]
+        pad_top, pad_bottom = (th - h) // 2, th - h - (th - h) // 2
+        pad_left, pad_right = (tw - w) // 2, tw - w - (tw - w) // 2
+        if img.ndim == 2:
+            return np.pad(img, ((pad_top, pad_bottom), (pad_left, pad_right)), constant_values=fill)
+        else:
+            return np.pad(img, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), constant_values=fill)
+
+    def pad_to_multiple_of_16(img):
+        h, w = img.shape[:2]
+        th = ((h + 15) // 16) * 16
+        tw = ((w + 15) // 16) * 16
+        return pad_to_size(img, (th, tw, img.shape[2] if img.ndim == 3 else 1))
+
+    for suf in suffixes:
+        print(f">> Saving {ext} for {suf}...")
+        matched = sorted([f for f in files if f.endswith(suf + ".png")],
+                         key=lambda x: int(re.search(r"z-(\d+)_", x).group(1)))
+        imgs = [imageio.imread(os.path.join(folderpath, f)) for f in matched]
+
+        # pad images to same size
+        max_h = max(img.shape[0] for img in imgs)
+        max_w = max(img.shape[1] for img in imgs)
+        target_shape = (max_h, max_w, imgs[0].shape[2] if imgs[0].ndim == 3 else 1)
+        imgs = [pad_to_size(img, target_shape) for img in imgs]
+
+        # pad to multiple of 16 for ffmpeg
+        imgs = [pad_to_multiple_of_16(img) for img in imgs]
+
+        outpath = os.path.join(folderpath, suf[1:] + f".{ext}")
+        imageio.mimsave(outpath, imgs, fps=fps)
+
+    print(f">> Saved {len(suffixes)} {ext} files in {folderpath}!")
 
 
 ####################

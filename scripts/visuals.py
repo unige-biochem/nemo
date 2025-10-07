@@ -1237,24 +1237,9 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
     napari.run()
 
 
-def view_neighbourhood(points, intensities, neighbours, sel_idx, mesh_opacity=0.3, neighbour_opacity=1.0, pt_size=5,
-                       mesh_size=2, plot_coord_system=False, mesh_blending="opaque"):
+def view_neighbourhood(points, neigh_idxs, sel_idx, vert_opacity=0.3, neighbour_opacity=1.0, pt_size=1,
+                       vert_size=1, plot_coord_system=False, vert_blending="translucent_no_depth"):
     print(">> Rendering the neighbourhood of a particle...")
-    viewer = napari.Viewer()
-    intensities_mapped = np.zeros((intensities.shape[0], 3))
-    intensities_mapped[:, 1] = intensities
-    viewer.add_points(points, name='Mesh', shading='none', opacity=mesh_opacity, blending=mesh_blending,
-                      face_color=intensities_mapped, border_color=intensities_mapped, size=mesh_size)
-    viewer.add_points(neighbours[sel_idx], face_color="yellow", border_color="yellow", size=pt_size,
-                      opacity=neighbour_opacity, blending="opaque")
-
-    viewer.add_points(points[sel_idx], face_color="red", border_color="red", size=pt_size)
-    if plot_coord_system:
-        viewer.add_vectors(
-            np.stack((np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])),
-                     axis=1), edge_color=["red", "green", "blue"], length=100, edge_width=1)
-    viewer.dims.ndisplay = 3
-    napari.run()
 
 
 def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, img=None, ptsize=2, cmap_img="green",

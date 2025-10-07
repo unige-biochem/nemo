@@ -61,11 +61,18 @@ def multi_coord_search_neighbours(verts_tree, verts_query, k, n_process=8, debug
         return idxs
 
 
-def coord_search_radius(verts, r):
-    print(f">> Searching neighbours within radius {r} ...")
+def coord_search_radius(verts, r, custom_probes=None, return_dists=False, debug=False):
+    if debug:
+        print(f">> Searching neighbours within radius {r} ...")
     tree = KDTreeSklearn(verts)
-    idxs = tree.query_radius(verts, r=r)
-    return list(idxs)
+    if custom_probes is not None:
+        idxs, dists = tree.query_radius(custom_probes, r=r, return_distance=True, sort_results=True)
+    else:
+        idxs, dists = tree.query_radius(verts, r=r, return_distance=True, sort_results=True)
+    if return_dists:
+        return list(idxs), list(dists)
+    else:
+        return list(idxs)
 
 
 def rot_x(alpha):
@@ -476,7 +483,7 @@ def sel_submesh(mesh, mask):
 
 
 def find_connected_meshes(mesh):
-    pint(f">> Searching for connected component meshes...")
+    print(f">> Searching for connected component meshes...")
     labels = trimesh.graph.connected_component_labels(mesh.face_adjacency)
     components = []
     for i in range(labels.max() + 1):
