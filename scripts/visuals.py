@@ -198,7 +198,7 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(18, 3), sl
 
 def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, figsize=(15, 8), savefig="", dpi=200,
                      cmap_label="Signal (a.u.)", manual_vminmax=None, hidefig=False):
-    print("Plotting max projection of coloured points...")
+    print(">> Plotting max projection of coloured points...")
     if colors is None:
         print(f"No colors given, assuming uniform color!")
         colors = np.zeros_like(verts)
@@ -568,37 +568,82 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
         plt.close()
 
 
-def plot_mercator_project(mercator_x, mercator_y, intensities, hexview=True, ptview=False, hexgridsize=200, savefig="",
-                          cmap="Greens", mercator_x_or=None, mercator_y_or=None, scale_factor=1.0, vec_freq=1,
-                          figsize=(8, 4), arrow_alpha=1.0, ptsize=2, alpha=1.0, dpi=200, invert_y_axis=False,
-                          aspect=2, cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, hidefig=False):
-    print(">> Plotting the mercator projection...")
-    if manual_vminmax is None:
-        vmin, vmax = intensities.min(), intensities.max()
-    else:
-        vmin, vmax = manual_vminmax
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
-    if hexview:
-        ax.hexbin(mercator_x, mercator_y, C=intensities, cmap=cmap, gridsize=hexgridsize, alpha=alpha)
-    if ptview:
-        ax.scatter(mercator_x, mercator_y, c=intensities, cmap=cmap, s=ptsize, alpha=alpha)
+def plot_spherical_projection(phi, theta, intensities,
+                              hexview=True, ptview=False, hexgridsize=200,
+                              cmap="Greens", vec_pos_phi=None, vec_pos_theta=None,
+                              vec_dir_phi=None, vec_dir_theta=None, veccolor="red",
+                              vec_manual_vminmax=None, vec_cmap="Spectral",
+                              scale_factor=1.0, figsize=(5, 4), arrow_alpha=1.0,
+                              vec_cmap_label="", vec_width=0.001, ptsize=2, alpha=1.0,
+                              invert_y_axis=False, aspect=2,
+                              cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=200,
+                              hidefig=False, marker_idxs=None, marker_color="yellow",
+                              marker_size=500, marker_alpha=0.9):
+    draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
 
-    if mercator_x_or is not None and mercator_y_or is not None:
-        ax.quiver(mercator_x[::vec_freq], mercator_y[::vec_freq], mercator_x_or[::vec_freq] * scale_factor,
-                  mercator_y_or[::vec_freq] * scale_factor,
-                  angles='xy', scale_units='xy', scale=1, color="red", alpha=arrow_alpha)
+    # Intensity normalization
+    vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
+
+    # Vector normalization
+    if draw_vectors and not isinstance(veccolor, str):
+        vec_norm = plt.Normalize(vmin=np.min(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[0],
+                                 vmax=np.max(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[1])
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])  # left, bottom, width, height
+
+    # Main plot
+    if hexview:
+        ax.hexbin(phi, theta, C=intensities, cmap=cmap, gridsize=hexgridsize, alpha=alpha)
+    if ptview:
+        ax.scatter(phi, theta, c=intensities, cmap=cmap, s=ptsize, alpha=alpha)
+
+    # Vector overlay
+    if draw_vectors:
+        if isinstance(veccolor, str):
+            ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
+                      pivot="middle", headlength=0, headwidth=0, headaxislength=0,
+                      angles='xy', scale_units='xy', scale=1, color=veccolor,
+                      alpha=arrow_alpha, width=vec_width)
+        else:
+            ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
+                      pivot="middle", headlength=0, headwidth=0, headaxislength=0,
+                      angles='xy', scale_units='xy', scale=1,
+                      color=plt.cm.get_cmap(vec_cmap)(vec_norm(veccolor)),
+                      alpha=arrow_alpha, width=vec_width)
+
+    if marker_idxs is not None:
+        if type(marker_color) == str:
+            ax.scatter(phi[marker_idxs], theta[marker_idxs], color=marker_color, s=marker_size, alpha=marker_alpha)
+        else:
+            ax.scatter(phi[marker_idxs], theta[marker_idxs], c=marker_color, s=marker_size,
+                       alpha=marker_alpha)
+
     if invert_y_axis:
-        print("INVERTING Y AXIS !!")
         ax.invert_yaxis()
     ax.set_aspect(aspect)
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
-                        ax=ax, orientation="vertical", fraction=0.02, pad=0.05)
-    cbar.set_label(cmap_label)
-    plt.xlabel("Longitude (deg)")
-    plt.ylabel("Latitude (deg)")
+    ax.set_xlabel("Phi (deg)")
+    ax.set_ylabel("Theta (deg)")
+
+    # Colorbar positions (manual)
+    # Intensity colorbar
+    cax_int = fig.add_axes([0.75, 0.1, 0.03, 0.8])  # moved a bit left
+    sm_int = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax))
+    sm_int.set_array([])
+    cbar_int = fig.colorbar(sm_int, cax=cax_int)
+    cbar_int.set_label(cmap_label)
+
+    # Vector colorbar
+    if draw_vectors and not isinstance(veccolor, str):
+        cax_vec = fig.add_axes([0.82, 0.1, 0.03, 0.8])  # moved further right
+        sm_vec = plt.cm.ScalarMappable(cmap=plt.cm.get_cmap(vec_cmap), norm=vec_norm)
+        sm_vec.set_array([])
+        cbar_vec = fig.colorbar(sm_vec, cax=cax_vec)
+        cbar_vec.set_label(vec_cmap_label)
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
         plt.show()
     else:
@@ -620,30 +665,33 @@ def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figs
         plt.close()
 
 
-def plot_interp_grid(grid_x, grid_y, grid_z, points, theta=None, hide_pts=False, figsize=(4, 3),
-                     linelength=2, hidefig=False):
-    print(">> Plotting the interpolated flattened neighborhood...")
-    plt.figure(figsize=figsize)
-    contour = plt.contourf(grid_x, grid_y, grid_z, levels=100, cmap='Greys_r')
-    if not hide_pts:
-        plt.scatter(points[:, 0], points[:, 1], c="k", marker="x", s=1, alpha=0.2)
+def plot_interp_grid(grid_x, grid_y, grid_z, theta=None, linelength=2, figsize=(4, 3), hidefig=False):
+    fig, ax = plt.subplots(figsize=figsize)
 
-    plt.scatter(points[0, 0], points[0, 1], c="r", edgecolor='r', s=50)
+    # Plot intensity grid
+    contour = ax.contourf(grid_x, grid_y, grid_z, levels=100, cmap='Greys_r')
+
+    # Plot orientation vector if provided
     if theta is not None:
-        x = np.array([-np.cos(theta), np.cos(theta)])
-        y = np.array([-np.sin(theta), np.sin(theta)])
-        plt.plot(linelength * x, linelength * y, color="red", linewidth=2)
-    plt.colorbar(contour, orientation='vertical', label='Fluorescence Intensity (a.u.)')
-    plt.title('Interp. Neighbourhood')
-    plt.gca().set_aspect("equal")
-    plt.xticks([])
-    plt.yticks([])
-    plt.xlabel('Local X')
-    plt.ylabel('Local y')
+        x_center = (grid_x.min() + grid_x.max()) / 2
+        y_center = (grid_y.min() + grid_y.max()) / 2
+        x_vec = x_center + np.array([-np.cos(theta), np.cos(theta)]) * linelength / 2
+        y_vec = y_center + np.array([-np.sin(theta), np.sin(theta)]) * linelength / 2
+        ax.plot(x_vec, y_vec, color="red", linewidth=2, label="Orientation")
+
+    ax.set_aspect('equal')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel('Local X')
+    ax.set_ylabel('Local Y')
+    ax.set_title('Interpolated Neighborhood')
+
+    fig.colorbar(contour, ax=ax, orientation='vertical', label='Fluorescence Intensity (a.u.)')
+
     if not hidefig:
         plt.show()
     else:
-        plt.close()
+        plt.close(fig)
 
 
 def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=200, hidefig=False):
@@ -1192,10 +1240,10 @@ def view_mesh_dir_field(mesh_list, directors, vec_colors, verts=None, verts_colo
 def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20, vec_edge_width=None,
                                 mesh_vert_colors="red", vec_opacity=1.0, vector_style="line",
                                 mesh_blending="opaque", mesh_color_override=None, mesh_opacity=1.0,
-                                mesh_shading="none", markers=None, marker_colors="yellow", marker_size=5):
+                                mesh_shading="none", markers=None, marker_colors="yellow", marker_size=5, img=None,
+                                scale=None, img_opacity=0.5):
     print(">> Rendering mesh and colored vertices...")
     vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
-
     if type(mesh_vert_colors) == str:
         mesh_vert_colors = np.tile(np.array(pltcolors.to_rgb(mesh_vert_colors)), (mesh.vertices.shape[0], 1))
     else:
@@ -1212,6 +1260,10 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
     if vec_edge_width is None:
         vec_edge_width = vec_length / 8
     viewer = napari.Viewer()
+    if img is not None and scale is not None:
+        viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip", colormap="green")
+    # viewer.add_surface((mesh.vertices, mesh.faces), shading='none',
+    #                    blending="translucent_no_depth", colormap="white")
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=mesh_vert_colors, shading=mesh_shading,
                        opacity=mesh_opacity, blending=mesh_blending)
     centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
@@ -1235,11 +1287,6 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     viewer.dims.ndisplay = 3
     napari.run()
-
-
-def view_neighbourhood(points, neigh_idxs, sel_idx, vert_opacity=0.3, neighbour_opacity=1.0, pt_size=1,
-                       vert_size=1, plot_coord_system=False, vert_blending="translucent_no_depth"):
-    print(">> Rendering the neighbourhood of a particle...")
 
 
 def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, img=None, ptsize=2, cmap_img="green",

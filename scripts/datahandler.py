@@ -19,7 +19,7 @@ import imageio.v2 as imageio
 #####################
 # ARRAY I/O MODULES #
 #####################
-def load_array(name, folderpath, return_df=False):
+def load_array(name, folderpath, return_df=False, debug=True):
     filepath = os.path.join(folderpath, f"{name}.csv")
     if not os.path.exists(filepath):
         print(f"{filepath} does not exist, exiting...")
@@ -31,7 +31,8 @@ def load_array(name, folderpath, return_df=False):
     raw_data_shape = raw_data.shape
     if len(raw_data_shape) == 2 and raw_data_shape[1] == 1:
         raw_data = raw_data.ravel()
-    print(f">> Loaded .../{name}.csv | cols {df_cols} | shape {raw_data.shape}")
+    if debug:
+        print(f">> Loaded .../{name}.csv | cols {df_cols} | shape {raw_data.shape}")
     if return_df:
         return df
     else:

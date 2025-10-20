@@ -157,7 +157,34 @@ def rescale_val_xyz(val, scale, debug=False):
         return val, val * zscale / xyscale, val * zscale / xyscale
 
 
+# def filter_valid_patches(verts, idxs_neigh, factor=0.1):
+#     centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
+#     reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
+#     center_reldist = reldists[:, 0]
+#     keep_mask = center_reldist < factor * np.max(reldists, axis=1)
+#     valid_patch_idxs = idxs_neigh[keep_mask]
+#     valid_idxs = np.argwhere(keep_mask)[:, 0]
+#     print(f"{len(valid_patch_idxs)} valid, {len(centroids_patches) - len(valid_patch_idxs)} invalid ! ")
+#     return valid_patch_idxs, valid_idxs
+
 def filter_valid_patches(verts, idxs_neigh, factor=0.1):
+    # Handle list-of-lists (radius-search)
+    if isinstance(idxs_neigh, list):
+        valid_patches = []
+        valid_idxs = []
+        for i, neigh in enumerate(idxs_neigh):
+            if len(neigh) == 0:
+                continue
+            verts_patch = verts[neigh]
+            centroid = np.mean(verts_patch, axis=0, keepdims=True)
+            reldists = np.linalg.norm(verts_patch - centroid, axis=1)
+            if reldists[0] < factor * np.max(reldists):
+                valid_patches.append(neigh)
+                valid_idxs.append(i)
+        print(f"{len(valid_patches)} valid, {len(idxs_neigh) - len(valid_patches)} invalid patches")
+        return valid_patches, np.array(valid_idxs)
+
+    # --- existing vectorised code for ndarray (nearest k) ---
     centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
     reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
     center_reldist = reldists[:, 0]
@@ -323,6 +350,17 @@ def load_img_dimensions(path):
         dims = {ax: shape[axis_map[ax]] if ax in axis_map else 1 for ax in ['T', 'Z', 'C', 'Y', 'X']}
         print(', '.join(f"{k} = {v}" for k, v in dims.items()))
         return dims
+
+
+def load_img_scaling(path):
+    print(f">> Loading {path}...")
+    if not os.path.exists(path):
+        print(f"[!] Image does not exist, aborting !")
+        return None
+
+    with TiffFile(path) as tif:
+        img_scale = get_tiff_scaling(tif)
+        return img_scale
 
 
 def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_unit=None, custom_scaling=None,
@@ -591,6 +629,17 @@ def advanced_simplify_mesh(mesh, director_indices, target_face_count=20000):
         face_normals=simplified_mesh.face_normals,
         face_angles=simplified_mesh.face_angles)
     return simplified_mesh
+
+
+def scale_mesh(mesh, distance):
+    print(f">> Scaling mesh ...")
+    mesh_scaled = mesh.copy()
+    mesh_scaled.vertices += mesh.vertex_normals * distance
+    mesh_scaled.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh_scaled.vertices),
+                                                                          faces=mesh_scaled.faces,
+                                                                          face_normals=mesh_scaled.face_normals,
+                                                                          face_angles=mesh_scaled.face_angles)
+    return mesh_scaled
 
 
 ########################
@@ -894,7 +943,8 @@ def select_geodesic_defects(order, mesh, idxs_sel, dist_cutoff=50, max_candidate
 
 
 def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_dist_per_vert=None, show_proj=False,
-              figsize=(12, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False):
+              figsize=(12, 5), interp_method="linear", return_full=False, cmap="inferno", savefig="", normalise=False,
+              hidefig=False):
     num_dist = int(num_dist)
     print(
         f">> Projecting {mode} image intensities on {len(mesh.vertices)} verts using {interp_method} interpolation method...")
@@ -921,7 +971,7 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
     intensities[outside_mask] = 0
     if show_proj:
         plot_dist_kymograph(distances=distances, intensities=intensities, cmap=cmap, figsize=figsize, unit=unit,
-                            savefig=savefig)
+                            savefig=savefig, hidefig=hidefig)
     if mode == "max":
         proj_intensity_values = np.max(intensities, axis=1)
     elif mode == "mean":
@@ -947,13 +997,47 @@ def spherical_project(pts, ref_point=None, rotate=None, debug=False):
         centered_inner_verts @= rot3dmatrix(alpha=rotate[0], beta=rotate[1], gamma=rotate[2])
     x, y, z = centered_inner_verts[:, 0], centered_inner_verts[:, 1], centered_inner_verts[:, 2]
 
-    mercator_rho = np.sqrt(x ** 2 + y ** 2 + z ** 2)
-    mercator_phi = np.degrees(np.arctan2(y, x))
-    mercator_theta = np.degrees(np.arccos(z / mercator_rho))
+    rho = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+    phi = np.degrees(np.arctan2(y, x))
+    theta = np.degrees(np.arccos(z / rho))
     if debug:
-        print(f"Min phi = {np.min(mercator_phi)} | MAX phi = {np.max(mercator_phi)}")
-        print(f"Min theta = {np.min(mercator_theta)} | MAX theta = {np.max(mercator_theta)}")
-    return mercator_phi, mercator_theta
+        print(f"Min phi = {np.min(phi)} | MAX phi = {np.max(phi)}")
+        print(f"Min theta = {np.min(theta)} | MAX theta = {np.max(theta)}")
+    return phi, theta
+
+
+def spherical_project_vectors(pts, vecs, ref_point=None, rotate=None):
+    print(">> Applying Spherical Projection to vector field...")
+    pts = pts.copy()
+    vecs = vecs.copy()
+    if ref_point is not None:
+        pts = pts - ref_point
+    else:
+        pts = pts - np.mean(pts, axis=0)
+    if rotate is not None:
+        pts @= rot3dmatrix(alpha=rotate[0], beta=rotate[1], gamma=rotate[2])
+    x, y, z = pts.T
+    r = np.linalg.norm(pts, axis=1)
+    # avoid division errors
+    r[r == 0] = np.finfo(float).eps
+
+    phi = np.arctan2(y, x)
+    theta = np.arccos(np.clip(z / r, -1.0, 1.0))
+
+    # Orthonormal spherical basis
+    e_phi = np.stack([-np.sin(phi), np.cos(phi), np.zeros_like(phi)], axis=1)
+    e_theta = np.stack([
+        np.cos(theta) * np.cos(phi),
+        np.cos(theta) * np.sin(phi),
+        -np.sin(theta)
+    ], axis=1)
+
+    # Projections
+    vphi = np.einsum('ij,ij->i', vecs, e_phi)
+    vtheta = np.einsum('ij,ij->i', vecs, e_theta)
+    vphi /= np.sin(theta)
+    vphi[np.isnan(vphi)] = 0
+    return vphi, vtheta
 
 
 def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_n=None):
@@ -1232,64 +1316,167 @@ def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
 ##############################################
 # 2D+ ORIENTATION & NEMATIC ANALYSIS MODULES #
 ##############################################
+# def tan_proj(neighbors_coords, central_normal):
+#     print(f">> Locally flattening coords ...")
+#     central_coord = neighbors_coords[:, 0, :]
+#     cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
+#                                   [0, 1, 0],
+#                                   [1, 0, 0])
+#     tangent_x_axes = np.cross(central_normal, cross_basis_vector)
+#     tangent_x_axes /= np.linalg.norm(tangent_x_axes, axis=1, keepdims=True)
+#     tangent_y_axes = np.cross(central_normal, tangent_x_axes)
+#     tangent_y_axes /= np.linalg.norm(tangent_y_axes, axis=1, keepdims=True)
+#     translated_points = neighbors_coords - central_coord[:, np.newaxis, :]
+#     local_x = np.einsum('nij,nj->ni', translated_points, tangent_x_axes)
+#     local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
+#     local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
+#     return local_2d_coordinates, tangent_x_axes, tangent_y_axes
+
 def tan_proj(neighbors_coords, central_normal):
     print(f">> Locally flattening coords ...")
-    central_coord = neighbors_coords[:, 0, :]
-    cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
-                                  [0, 1, 0],
-                                  [1, 0, 0])
-    tangent_x_axes = np.cross(central_normal, cross_basis_vector)
-    tangent_x_axes /= np.linalg.norm(tangent_x_axes, axis=1, keepdims=True)
-    tangent_y_axes = np.cross(central_normal, tangent_x_axes)
-    tangent_y_axes /= np.linalg.norm(tangent_y_axes, axis=1, keepdims=True)
-    translated_points = neighbors_coords - central_coord[:, np.newaxis, :]
-    local_x = np.einsum('nij,nj->ni', translated_points, tangent_x_axes)
-    local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
-    local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
-    return local_2d_coordinates, tangent_x_axes, tangent_y_axes
 
+    # Detect if input is a list (variable-length neighbours)
+    if isinstance(neighbors_coords, list):
+        local_2d_coords_list = []
+        tangent_x_list = []
+        tangent_y_list = []
+        for i, coords in enumerate(neighbors_coords):
+            c_norm = central_normal[i]
+            central_coord = coords[0]
+
+            cross_basis_vector = np.array([1, 0, 0]) if not np.allclose(np.cross(c_norm, [1, 0, 0]), 0) else np.array(
+                [0, 1, 0])
+            t_x = np.cross(c_norm, cross_basis_vector)
+            t_x /= np.linalg.norm(t_x)
+            t_y = np.cross(c_norm, t_x)
+            t_y /= np.linalg.norm(t_y)
+
+            translated_points = coords - central_coord
+            local_x = translated_points @ t_x
+            local_y = translated_points @ t_y
+            local_2d_coords_list.append(np.stack((local_x, local_y), axis=-1))
+            tangent_x_list.append(t_x)
+            tangent_y_list.append(t_y)
+
+        tangent_x_axes = np.stack(tangent_x_list)
+        tangent_y_axes = np.stack(tangent_y_list)
+        return local_2d_coords_list, tangent_x_axes, tangent_y_axes
+
+    else:
+        # Regular uniform array path (vectorized)
+        central_coord = neighbors_coords[:, 0, :]
+        cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
+                                      [0, 1, 0],
+                                      [1, 0, 0])
+        tangent_x_axes = np.cross(central_normal, cross_basis_vector)
+        tangent_x_axes /= np.linalg.norm(tangent_x_axes, axis=1, keepdims=True)
+        tangent_y_axes = np.cross(central_normal, tangent_x_axes)
+        tangent_y_axes /= np.linalg.norm(tangent_y_axes, axis=1, keepdims=True)
+
+        translated_points = neighbors_coords - central_coord[:, np.newaxis, :]
+        local_x = np.einsum('nij,nj->ni', translated_points, tangent_x_axes)
+        local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
+        local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
+        return local_2d_coordinates, tangent_x_axes, tangent_y_axes
+
+
+# def tan_interp_batch(coords, intensities, grid_size):
+#     batch_size, num_points, _ = coords.shape
+#     u_min = coords[:, :, 0].min(axis=1)[:, None, None]
+#     u_max = coords[:, :, 0].max(axis=1)[:, None, None]
+#     v_min = coords[:, :, 1].min(axis=1)[:, None, None]
+#     v_max = coords[:, :, 1].max(axis=1)[:, None, None]
+#     lin_u = np.linspace(0, 1, grid_size)
+#     lin_v = np.linspace(0, 1, grid_size)
+#     grid_x, grid_y = np.meshgrid(lin_u, lin_v, indexing="ij")
+#     grid_x = u_min + (u_max - u_min) * grid_x
+#     grid_y = v_min + (v_max - v_min) * grid_y
+#     grid_points = np.stack([grid_x, grid_y], axis=-1).reshape(batch_size, -1, 2)
+#     trees = [KDTree(coords[i]) for i in range(batch_size)]
+#     idxs = np.array([tree.query(grid_points[i], k=1)[1] for i, tree in enumerate(trees)])
+#     grid_z = np.take_along_axis(intensities, idxs, axis=1).reshape(batch_size, grid_size, grid_size)
+#     return grid_x, grid_y, grid_z
 
 def tan_interp_batch(coords, intensities, grid_size):
-    batch_size, num_points, _ = coords.shape
-    u_min = coords[:, :, 0].min(axis=1)[:, None, None]
-    u_max = coords[:, :, 0].max(axis=1)[:, None, None]
-    v_min = coords[:, :, 1].min(axis=1)[:, None, None]
-    v_max = coords[:, :, 1].max(axis=1)[:, None, None]
+    if isinstance(coords, list):
+        batch_size = len(coords)
+    else:
+        batch_size, _, _ = coords.shape
+
     lin_u = np.linspace(0, 1, grid_size)
     lin_v = np.linspace(0, 1, grid_size)
     grid_x, grid_y = np.meshgrid(lin_u, lin_v, indexing="ij")
-    grid_x = u_min + (u_max - u_min) * grid_x
-    grid_y = v_min + (v_max - v_min) * grid_y
-    grid_points = np.stack([grid_x, grid_y], axis=-1).reshape(batch_size, -1, 2)
-    trees = [KDTree(coords[i]) for i in range(batch_size)]
-    idxs = np.array([tree.query(grid_points[i], k=1)[1] for i, tree in enumerate(trees)])
-    grid_z = np.take_along_axis(intensities, idxs, axis=1).reshape(batch_size, grid_size, grid_size)
+
+    grid_z = []
+    for i in range(batch_size):
+        pts = coords[i] if isinstance(coords, list) else coords[i]
+        inten = intensities[i] if isinstance(coords, list) else intensities[i]
+        u_min, u_max = pts[:, 0].min(), pts[:, 0].max()
+        v_min, v_max = pts[:, 1].min(), pts[:, 1].max()
+        gx = u_min + (u_max - u_min) * grid_x
+        gy = v_min + (v_max - v_min) * grid_y
+        grid_pts = np.stack([gx, gy], axis=-1).reshape(-1, 2)
+        tree = KDTree(pts)
+        _, idx = tree.query(grid_pts, k=1)
+        gz = inten[idx].reshape(grid_size, grid_size)
+        grid_z.append(gz)
     return grid_x, grid_y, grid_z
 
 
-def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None,
-                         debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None, debug_line_length=5):
+# def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None,
+#                          debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None, debug_line_length=5):
+#     dir_vec = np.zeros(shape=(len(tan_x), 3))
+#     if debug:
+#         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
+#                                            onlytheta=True) * -1
+#         theta_center = np.radians(theta_all[theta_all.shape[0] // 2, theta_all.shape[1] // 2])
+#         dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * \
+#                              tan_y[debug_idx]
+#         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
+#         plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
+#                          points=tan_cords[debug_idx], theta=theta_center, linelength=debug_line_length)
+#         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
+#                     remove_axes=True)
+#     else:
+#         print(f"Running batch analysis for {big_grid.shape} and tensor box size: {box_size} ")
+#         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
+#         theta_mid_idx = theta_all.shape[1] // 2
+#         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
+#         theta_center = np.radians(theta_all[center_indices, theta_mid_idx])
+#
+#         dir_vec = np.cos(theta_center)[:, None] * tan_x + \
+#                   np.sin(theta_center)[:, None] * tan_y
+#     directors = np.column_stack((vertices, dir_vec))
+#     print(f"Finished! {len(directors)} director(s)!")
+#     return directors
+
+
+def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None, debug_line_length=5):
     dir_vec = np.zeros(shape=(len(tan_x), 3))
+    theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
+
     if debug:
-        theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
-                                           onlytheta=True) * -1
         theta_center = np.radians(theta_all[theta_all.shape[0] // 2, theta_all.shape[1] // 2])
-        dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * \
-                             tan_y[debug_idx]
+        dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * tan_y[debug_idx]
         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
-        plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
-                         points=tan_cords[debug_idx], theta=theta_center, linelength=debug_line_length)
+        # Extract the debug grid for plotting
+        debug_grid_z = big_grid[0] if isinstance(big_grid, list) else big_grid
+        grid_x, grid_y = np.meshgrid(
+            np.linspace(0, 1, debug_grid_z.shape[0]),
+            np.linspace(0, 1, debug_grid_z.shape[1]),
+            indexing="ij"
+        )
+        # Plot the debug grid
+        plot_interp_grid(grid_x, grid_y, debug_grid_z, theta=theta_center, linelength=debug_line_length)
         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
                     remove_axes=True)
     else:
-        print(f"Running batch analysis for {big_grid.shape} and tensor box size: {box_size} ")
-        theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
+        # Batch mode for all vertices
         theta_mid_idx = theta_all.shape[1] // 2
         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
         theta_center = np.radians(theta_all[center_indices, theta_mid_idx])
+        dir_vec = np.cos(theta_center)[:, None] * tan_x + np.sin(theta_center)[:, None] * tan_y
 
-        dir_vec = np.cos(theta_center)[:, None] * tan_x + \
-                  np.sin(theta_center)[:, None] * tan_y
     directors = np.column_stack((vertices, dir_vec))
     print(f"Finished! {len(directors)} director(s)!")
     return directors
