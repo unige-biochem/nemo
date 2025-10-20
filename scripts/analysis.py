@@ -759,23 +759,32 @@ def generate_sliced_mesh(img, img_scale, xres=1, yres=1, zres=1, normal_vec=None
 #########################
 # MESH ANALYSIS MODULES #
 #########################
-def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debug=False, gauss_crop_range=None,
-                         mean_crop_range=None, boundary_excl_factor=0.1, use_original_vertices=False):
-    print(f">> Calculating curvature for mesh with k={k} and for {num_sample}/{len(mesh.vertices)} vertices...")
+def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", filter_boundary=False, debug=False,
+                         gauss_crop_range=None, mean_crop_range=None, boundary_excl_factor=0.1,
+                         use_original_vertices=False):
+    print(f">> Calculating curvature for {num_sample}/{len(mesh.vertices)} vertices of mesh...")
     random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
     if use_original_vertices:
         random_idxs = np.arange(mesh.vertices.shape[0])
     verts = mesh.vertices[random_idxs]
     N = len(verts)
     normals = mesh.vertex_normals[random_idxs]
+    if patch_mode == "radius":
+        neigh_idxs = coord_search_radius(verts=verts, r=patch_size, debug=False)
+        neigh_verts = [verts[idxs] for idxs in neigh_idxs]
+        neigh_normals = [normals[idxs] for idxs in neigh_idxs]
+    elif patch_mode == "nearest":
+        neigh_idxs = coord_search_neighbours(verts=verts, k=patch_size, debug=False)
+        neigh_verts = verts[neigh_idxs]
+        neigh_normals = normals[neigh_idxs]
+    else:
+        print(f"[!] Unknown patch type: {patch_type}")
+        return None
 
-    neigh_idxs = coord_search_neighbours(verts=verts, k=k, debug=False)
     if filter_boundary:
         neigh_idxs, valid_idxs = filter_valid_patches(verts=verts, idxs_neigh=neigh_idxs, factor=boundary_excl_factor)
         N = len(neigh_idxs)
         random_idxs = random_idxs[valid_idxs]
-    neigh_verts = verts[neigh_idxs]
-    neigh_normals = normals[neigh_idxs]
     tan_x_cov, tan_y_cov = create_tangential_basis(normals=normals, hide_output=True)
     g = np.array([gmetric(tan_x_cov[i], tan_y_cov[i]) for i in range(N)])
     g_inv = np.array([np.linalg.inv(g[i]) for i in range(N)])
@@ -786,15 +795,24 @@ def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debu
     for i in range(N):
         C = np.zeros((2, 2))
         z_nbs, xi_nbs, eta_nbs = [], [], []
-        for j in range(1, k):
-            drvec = neigh_verts[i, j] - neigh_verts[i, 0]
-            z_nb = np.dot(drvec, neigh_normals[i, 0])
+        n_neigh = len(neigh_verts[i]) if isinstance(neigh_verts, list) else neigh_verts.shape[1]
+        for j in range(1, n_neigh):
+            if isinstance(neigh_verts, list):
+                drvec = neigh_verts[i][j] - neigh_verts[i][0]
+                n0 = neigh_normals[i][0]
+            else:
+                drvec = neigh_verts[i, j] - neigh_verts[i, 0]
+                n0 = neigh_normals[i, 0]
+            z_nb = np.dot(drvec, n0)
             z_nbs.append(z_nb)
             xi_nb = np.dot(drvec, tan_x_contr[i])
             xi_nbs.append(xi_nb)
             eta_nb = np.dot(drvec, tan_y_contr[i])
             eta_nbs.append(eta_nb)
-
+        if len(xi_nbs) < 3:
+            C_gauss.append(np.nan)
+            C_mean.append(np.nan)
+            continue
         S = np.array([[xi ** 2, xi * eta, eta ** 2] for xi, eta in zip(xi_nbs, eta_nbs)])
         b = np.array(z_nbs)
         v, residuals, rank, s_lstq = np.linalg.lstsq(S, b, rcond=None)
@@ -810,27 +828,27 @@ def curvature_by_srf_fit(mesh, num_sample, k=4 ** 2, filter_boundary=False, debu
     C_gauss, C_mean = np.asarray(C_gauss), np.asarray(C_mean)
     if debug:
         print(
-            f"Gauss: AVG = {np.average(C_gauss)} | MIN = {np.min(C_gauss)} | MAX = {np.max(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
+            f"Gauss: AVG = {np.nanmean(C_gauss)} | MIN = {np.nanmin(C_gauss)} | MAX = {np.nanmax(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
         print(
-            f"Mean: AVG = {np.average(C_mean)} | MIN = {np.min(C_mean)} | MAX = {np.max(C_mean)} | None? = {np.isnan(C_mean).sum()}")
+            f"Mean: AVG = {np.nanmean(C_mean)} | MIN = {np.nanmin(C_mean)} | MAX = {np.nanmax(C_mean)} | None? = {np.isnan(C_mean).sum()}")
 
     Gauss_idxs = random_idxs
     if gauss_crop_range is not None:
         print(f">> Cropping Gauss to min {gauss_crop_range[0]}, max {gauss_crop_range[1]}...")
-        crop_mask = (gauss_crop_range[0] < C_gauss) & (C_gauss < gauss_crop_range[1])
+        crop_mask = (gauss_crop_range[0] < C_gauss) & (C_gauss < gauss_crop_range[1]) & (~np.isnan(C_gauss))
         C_gauss, Gauss_idxs = C_gauss[crop_mask], Gauss_idxs[crop_mask]
         if debug:
             print(
-                f"Gauss: AVG = {np.average(C_gauss)} | MIN = {np.min(C_gauss)} | MAX = {np.max(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
+                f"Gauss: AVG = {np.nanmean(C_gauss)} | MIN = {np.nanmin(C_gauss)} | MAX = {np.nanmax(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
 
     mean_idxs = random_idxs
     if mean_crop_range is not None:
         print(f">> Cropping Mean to min {mean_crop_range[0]}, max {mean_crop_range[1]}...")
-        crop_mask = (mean_crop_range[0] < C_mean) & (C_mean < mean_crop_range[1])
+        crop_mask = (mean_crop_range[0] < C_mean) & (C_mean < mean_crop_range[1]) & (~np.isnan(C_mean))
         C_mean, mean_idxs = C_mean[crop_mask], mean_idxs[crop_mask]
         if debug:
             print(
-                f"Mean: AVG = {np.average(C_mean)} | MIN = {np.min(C_mean)} | MAX = {np.max(C_mean)} | None? = {np.isnan(C_mean).sum()}")
+                f"Mean: AVG = {np.nanmean(C_mean)} | MIN = {np.nanmin(C_mean)} | MAX = {np.nanmax(C_mean)} | None? = {np.isnan(C_mean).sum()}")
 
     return C_gauss, C_mean, Gauss_idxs, mean_idxs
 
@@ -1631,11 +1649,22 @@ def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, co
 
 
 def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y, c_gauss, loop_angle_precision=1,
-                      k_charge=5 ** 2, debug=False, return_all_contributions=False, correct_orientation=True):
+                      patch_mode="nearest", patch_size=25, debug=False, return_all_contributions=False,
+                      correct_orientation=True):
     print(f">> Calculating topological charge for {len(directors)} directors...")
-    charge_patch_broad = coord_search_neighbours(mesh.vertices,
-                                                 custom_probes=mesh.vertices[director_indeces[calc_idxs]], k=k_charge,
+    if patch_mode == "radius":
+        charge_patch_broad = coord_search_radius(mesh.vertices,
+                                                 custom_probes=mesh.vertices[director_indeces[calc_idxs]], r=patch_size,
                                                  debug=debug)
+        charge_patch_broad = np.array(charge_patch_broad, dtype=object)
+    elif patch_mode == "nearest":
+        charge_patch_broad = coord_search_neighbours(mesh.vertices,
+                                                     custom_probes=mesh.vertices[director_indeces[calc_idxs]],
+                                                     k=patch_size,
+                                                     debug=debug)
+    else:
+        print(f"[!] Unknown patch type: {patch_type}")
+        return None
     m_gauss_contribution = patch_surface_integral(mesh=mesh, value=c_gauss,
                                                   patch_idxs=charge_patch_broad,
                                                   debug=debug)
