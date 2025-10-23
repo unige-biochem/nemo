@@ -1033,28 +1033,27 @@ def spherical_project_vectors(pts, vecs, ref_point=None, rotate=None):
     else:
         pts = pts - np.mean(pts, axis=0)
     if rotate is not None:
-        pts @= rot3dmatrix(alpha=rotate[0], beta=rotate[1], gamma=rotate[2])
+        R = rot3dmatrix(alpha=rotate[0], beta=rotate[1], gamma=rotate[2])
+        pts = pts @ R
+        vecs = vecs @ R
     x, y, z = pts.T
     r = np.linalg.norm(pts, axis=1)
-    # avoid division errors
     r[r == 0] = np.finfo(float).eps
-
     phi = np.arctan2(y, x)
-    theta = np.arccos(np.clip(z / r, -1.0, 1.0))
-
-    # Orthonormal spherical basis
+    theta = np.arccos(z / r)
     e_phi = np.stack([-np.sin(phi), np.cos(phi), np.zeros_like(phi)], axis=1)
     e_theta = np.stack([
         np.cos(theta) * np.cos(phi),
         np.cos(theta) * np.sin(phi),
         -np.sin(theta)
     ], axis=1)
-
-    # Projections
     vphi = np.einsum('ij,ij->i', vecs, e_phi)
     vtheta = np.einsum('ij,ij->i', vecs, e_theta)
-    vphi /= np.sin(theta)
+    # vphi /= np.sin(theta)
     vphi[np.isnan(vphi)] = 0
+    norm = np.sqrt(vphi ** 2 + vtheta ** 2)
+    vphi /= norm
+    vtheta /= norm
     return vphi, vtheta
 
 
