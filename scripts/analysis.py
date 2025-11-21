@@ -25,6 +25,7 @@ import pyvista as pv
 from sklearn.decomposition import PCA
 from skimage.morphology import medial_axis
 from itertools import combinations
+from skimage.morphology import skeletonize_3d
 
 
 #################
@@ -1049,7 +1050,7 @@ def spherical_project_vectors(pts, vecs, ref_point=None, rotate=None):
     ], axis=1)
     vphi = np.einsum('ij,ij->i', vecs, e_phi)
     vtheta = np.einsum('ij,ij->i', vecs, e_theta)
-    # vphi /= np.sin(theta)
+    vphi /= np.sin(theta)
     vphi[np.isnan(vphi)] = 0
     norm = np.sqrt(vphi ** 2 + vtheta ** 2)
     vphi /= norm
@@ -1222,6 +1223,268 @@ def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
     return parallel_results, orthogonal_results, nematic_results, nematic_results_unweighted
 
 
+def find_phi_intensity_max(phi_vals, intensity_vals):
+    phi_vals_sorted = np.sort(phi_vals)
+    dphi = np.diff(np.r_[phi_vals_sorted, phi_vals_sorted[0] + 2 * np.pi])
+    adaptive_w = intensity_vals * np.interp(phi_vals, phi_vals_sorted, dphi)
+    return np.angle(np.sum(adaptive_w * np.exp(1j * phi_vals)) / np.sum(adaptive_w))
+
+
+def shift_angle_periodic(angle, angle_zerobase):
+    return np.angle(np.exp(1j * (angle - angle_zerobase)))
+
+
+def cylindrical_along_curve(points, curve):
+    print(f">> Performing cylindrical projection along curve for {len(points)} vertices!")
+    points = np.asarray(points)
+    curve = np.asarray(curve)
+
+    # Tangent along curve
+    tangents = np.gradient(curve, axis=0)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+
+    # Extend endpoints for continuity
+    tangents[0] = tangents[1]
+    tangents[-1] = tangents[-2]
+
+    # Curvature vector dt
+    dt = np.gradient(tangents, axis=0)
+    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
+
+    # Detect small dt
+    small_dt_mask = dt_norm[:, 0] < 1e-12
+    if np.all(small_dt_mask):
+        # Entire curve is straight → pick an arbitrary perpendicular vector
+        ref = np.array([0, 0, 1])
+        print(f"[!] Warning: entire curve has near-zero curvature; using arbitrary perpendicular vector {ref}!")
+        # Ensure it's not parallel to tangent
+        if np.abs(np.dot(ref, tangents[0])) > 0.99:
+            ref = np.array([0, 1, 0])
+        dt[:] = np.cross(tangents, ref)
+        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
+    else:
+        print(
+            f"[!] Warning: {np.sum(small_dt_mask)} point(s) along the curve have near-zero curvature; using nearest valid vector instead!")
+        # Only some points are near-zero → pick nearest valid vector
+        valid_idx = np.where(~small_dt_mask)[0]
+        for i in np.where(small_dt_mask)[0]:
+            nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
+            dt[i] = dt[nearest]
+        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
+    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
+    dt /= dt_norm
+
+    # Extend endpoints
+    dt[0] = dt[1]
+    dt[-1] = dt[-2]
+
+    # Arc length along curve
+    ds = np.linalg.norm(np.diff(curve, axis=0), axis=1)
+    s_curve = np.concatenate([[0], np.cumsum(ds)])
+
+    # Closest point on curve
+    tree = KDTree(curve)
+    _, idx = tree.query(points)
+    closest = curve[idx]
+    tangent = tangents[idx]
+    normal = dt[idx]
+
+    # Binormal
+    binormal = np.cross(tangent, normal)
+
+    # Cylindrical coordinates
+    vec = points - closest
+    rho = np.linalg.norm(vec, axis=1)
+    phi = np.arctan2(np.sum(vec * binormal, axis=1), np.sum(vec * normal, axis=1))
+    s = s_curve[idx]
+
+    return s, rho, phi
+
+
+def skeletonise_mesh(mesh, voxel_size):
+    voxelized = trimesh.voxel.creation.voxelize(mesh, pitch=voxel_size)
+    voxelized_grid = voxelized.matrix.astype(np.uint8)
+    voxelized_grid = binary_fill_holes(voxelized_grid)
+    skel = skeletonize_3d(voxelized_grid)
+    skel_coords = np.ceil(np.argwhere(skel > 0) * voxelized.pitch + voxelized.translation).astype(int)
+    print(f"Found {len(skel_coords)} skeleton points!")
+    return skel_coords
+
+
+def order_points_along_path(points, start_idx=None):
+    points = np.asarray(points)
+    tree = KDTree(points)
+    N = len(points)
+    ordered = np.zeros(N, dtype=int)
+    used = np.zeros(N, dtype=bool)
+
+    if start_idx is None:
+        start_idx = np.unravel_index(np.argmin(points), points.shape)[0]
+
+    ordered[0] = start_idx
+    used[start_idx] = True
+    curr = start_idx
+
+    for i in range(1, N):
+        _, idx = tree.query(points[curr], k=N)
+        next_idx = next(j for j in idx if not used[j])
+        ordered[i] = next_idx
+        used[next_idx] = True
+        curr = next_idx
+
+    return points[ordered]
+
+
+def reparametrize_curve_by_curvature(curve, smooth=0.1):
+    # Fit spline as before
+    tck, _ = splprep(curve.T, s=smooth, k=3)
+    u_vals = np.linspace(0, 1, len(curve))
+    curve_fit = np.array(splev(u_vals, tck)).T
+    # Compute curvature and smooth it
+    tangents = np.gradient(curve_fit, axis=0)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+    # Resample according to cumulative arc length weighted by curvature
+    ds = np.cumsum(np.r_[0, np.sqrt((np.diff(curve_fit, axis=0) ** 2).sum(1))])
+    new_s = np.linspace(ds.min(), ds.max(), len(curve))
+    curve_uniform = np.array([np.interp(new_s, ds, curve_fit[:, i]) for i in range(3)]).T
+    return curve_uniform
+
+
+def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, smooth=100, sample_interv=3,
+                                           step_u=0.01):
+    print(f">> Fitting spline of order {order_k}...")
+    x, y, z = curve[::sample_interv].T
+
+    # Fit spline
+    tck, u = splprep([x, y, z], s=smooth, k=order_k)
+
+    # 1. Extend forward
+    u_max = 1.0
+    while True:
+        u_max += step_u
+        pt = np.array(splev(u_max, tck))
+        if not mesh.contains(pt.reshape(1, 3))[0]:
+            u_max -= step_u
+            break
+
+    # 2. Extend backward
+    u_min = 0.0
+    while True:
+        u_min -= step_u
+        pt = np.array(splev(u_min, tck))
+        if not mesh.contains(pt.reshape(1, 3))[0]:
+            u_min += step_u
+            break
+
+    # 3. Evaluate curve inside mesh
+    u_vals = np.linspace(u_min, u_max, num_pts)
+    curve_fitted = np.array(splev(u_vals, tck)).T
+    print(f"Fitted curve of length {len(curve_fitted)}!")
+    return curve_fitted
+
+
+def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
+    vertices = mesh.vertices
+    centroid = vertices.mean(axis=0)
+
+    # PCA
+    pca = PCA(n_components=3)
+    pca.fit(vertices)
+    axis = pca.components_[0]
+    axis /= np.linalg.norm(axis)
+
+    # Project all vertices onto the PCA axis
+    projections = (vertices - centroid) @ axis  # scalar projection along axis
+    t_min = projections.min()
+    t_max = projections.max()
+
+    # Dense line along axis covering entire mesh
+    t_dense = np.linspace(t_min, t_max, oversample)
+    dense_line = centroid[None, :] + t_dense[:, None] * axis[None, :]
+
+    # Vectorized contains check
+    inside_mask = mesh.contains(dense_line)
+    if not np.any(inside_mask):
+        raise RuntimeError("No points along PCA axis are inside the mesh!")
+
+    line_start = dense_line[np.argmax(inside_mask)]
+    line_end = dense_line[np.where(inside_mask)[0][-1]]
+
+    # Interpolate final line
+    t = np.linspace(0, 1, num_points)[:, None]
+    line = line_start + t * (line_end - line_start)
+
+    print(f"Created PCA line extended inside mesh with {len(line)} points!")
+    return line
+
+
+def create_s_phi_basis(points, curve, normals):
+    points = np.asarray(points)
+    curve = np.asarray(curve)
+
+    # --- Nearest curve point
+    tree = KDTree(curve)
+    _, idx = tree.query(points)
+    closest = curve[idx]
+
+    # --- Radial vector
+    r_vec = points - closest
+    r_norm = np.linalg.norm(r_vec, axis=1, keepdims=True)
+    r_norm[r_norm == 0] = 1.0
+    e_rho = r_vec / r_norm
+
+    # --- e_phi (azimuthal around curve)
+    # Approximate curve tangent along centerline
+    tangents = np.gradient(curve, axis=0)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+    tangents[0] = tangents[1]
+    tangents[-1] = tangents[-2]
+    t_closest = tangents[idx]
+
+    e_phi = np.cross(t_closest, e_rho)
+    e_phi /= np.linalg.norm(e_phi, axis=1, keepdims=True)
+
+    # --- e_s = cross(e_phi, normals) ensures tangential to surface and follows rho
+    e_s = np.cross(e_phi, normals)
+    e_s /= np.linalg.norm(e_s, axis=1, keepdims=True)
+
+    return e_s, e_phi, e_rho
+
+
+def decompose_q_sphi(q_sphi, s_coords, num_bins=50):
+    Q_ss = q_sphi[:, 0, 0]
+    Q_phiphi = q_sphi[:, 1, 1]
+    Q_sphi = q_sphi[:, 0, 1]
+    s_bins = np.linspace(s_coords.min(), s_coords.max(), num_bins)
+    s_bin_centers = 0.5 * (s_bins[:-1] + s_bins[1:])
+    Q_ss_mean = np.zeros(num_bins - 1)
+    Q_phiphi_mean = np.zeros(num_bins - 1)
+    Q_sphi_mean = np.zeros(num_bins - 1)
+
+    for i in range(num_bins - 1):
+        mask = (s_coords >= s_bins[i]) & (s_coords < s_bins[i + 1])
+        if mask.any():
+            Q_ss_mean[i] = Q_ss[mask].mean()
+            Q_phiphi_mean[i] = Q_phiphi[mask].mean()
+            Q_sphi_mean[i] = Q_sphi[mask].mean()
+    return s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean
+
+
+def planarise_curve(curve):
+    points_centered = curve - curve.mean(axis=0)
+    _, _, vh = np.linalg.svd(points_centered)
+    normal = vh[-1]
+    curve_planar = curve - np.outer(points_centered @ normal, normal)
+    distances = np.abs((curve_planar - curve_planar.mean(axis=0)) @ normal)
+    print("Max deviation after projection:", distances.max())
+    return curve_planar
+
+
+def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
+    keep_mask = (angles > angle_low_cutoff) & (angles < angle_high_cutoff)
+    return values[keep_mask]
+
+
 #############################################
 # 2D ORIENTATION & NEMATIC ANALYSIS MODULES #
 #############################################
@@ -1285,8 +1548,8 @@ def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
     else:
         q_avg = []
         for neigh in neigh_idxs:
-            if len(neigh) == 0:
-                q_avg.append(np.zeros((2, 2)))
+            if len(neigh) <= 1:
+                q_avg.append(np.full(fill_value=np.nan, shape=(2, 2)))
             else:
                 if weights is None:
                     q_avg.append(np.mean(q[neigh], axis=0))
@@ -1499,7 +1762,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
     return directors
 
 
-def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
+def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, return_qij_bar=False):
     print(f">> Averaging the nematic tensor in basis t1 t2 ...")
     N = len(t1_cov)
 
@@ -1528,11 +1791,11 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
             else:
                 q_tilde_avg.append(np.average(q_tilde[neigh], axis=0))
         q_tilde_avg = np.stack(q_tilde_avg)
-
     qij_bar = np.array([np.array([[tensprod(q_tilde_avg[i], t_outer[i, 0, 0]),
                                    tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
                                   [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
                                    tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
+
     eigvals, eigvecs = np.linalg.eigh(qij_bar)
     max_indeces = np.argmax(eigvals, axis=1)
     max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
@@ -1551,28 +1814,56 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False):
         print(f"q_bar with shape {qij_bar.shape} = \n {qij_bar}")
         print(f"S_order with shape {S_order.shape} = \n {S_order}")
         print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg
+    if return_qij_bar:
+        return S_order, n_avg, qij_bar
+    else:
+        return S_order, n_avg
 
 
 def unique_neighborhoods(arr):
-    M, k = arr.shape
-    max_index = arr.max() + 1
-    membership = np.zeros((M, max_index), dtype=bool)
-    membership[np.arange(M)[:, None], arr] = True
-    conflict = membership @ membership.T > 0
-    np.fill_diagonal(conflict, 0)
-    selected = []
-    remaining = np.ones(M, dtype=bool)
+    # ---- If arr is a list of lists, convert to list-of-sets approach ----
+    if isinstance(arr, list):
+        M = len(arr)
+        neighborhoods = [set(neigh) for neigh in arr]
+        conflict = np.zeros((M, M), dtype=bool)
+        for i in range(M):
+            for j in range(i + 1, M):
+                if neighborhoods[i] & neighborhoods[j]:
+                    conflict[i, j] = True
+                    conflict[j, i] = True
 
-    while remaining.any():
-        degrees = conflict[remaining][:, remaining].sum(axis=1)
-        idx_in_remaining = np.argmin(degrees)
-        idx = np.flatnonzero(remaining)[idx_in_remaining]
-        selected.append(idx)
-        to_remove = conflict[idx] | (np.arange(M) == idx)
-        remaining[to_remove] = False
+        selected = []
+        remaining = np.ones(M, dtype=bool)
+        while remaining.any():
+            degrees = conflict[remaining][:, remaining].sum(axis=1)
+            idx_in_remaining = np.argmin(degrees)
+            idx = np.flatnonzero(remaining)[idx_in_remaining]
+            selected.append(idx)
+            to_remove = conflict[idx] | (np.arange(M) == idx)
+            remaining[to_remove] = False
+        print(f"{len(selected)} unique out of {len(arr)}!")
+        return [arr[i] for i in selected]
+    else:
+        # ---- Else assume arr is an Mxk numpy array (original version) ----
+        arr = np.asarray(arr)
+        M, k = arr.shape
+        max_index = arr.max() + 1
+        membership = np.zeros((M, max_index), dtype=bool)
+        membership[np.arange(M)[:, None], arr] = True
+        conflict = membership @ membership.T > 0
+        np.fill_diagonal(conflict, 0)
+        selected = []
+        remaining = np.ones(M, dtype=bool)
 
-    return arr[selected]
+        while remaining.any():
+            degrees = conflict[remaining][:, remaining].sum(axis=1)
+            idx_in_remaining = np.argmin(degrees)
+            idx = np.flatnonzero(remaining)[idx_in_remaining]
+            selected.append(idx)
+            to_remove = conflict[idx] | (np.arange(M) == idx)
+            remaining[to_remove] = False
+        print(f"{len(selected)} unique out of {len(arr)}!")
+        return arr[selected]
 
 
 def patch_surface_integral(mesh, value, patch_idxs, debug=False):

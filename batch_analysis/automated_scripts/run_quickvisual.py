@@ -52,10 +52,10 @@ def main(img_path):
         # ==== Create Folder Structure ====
         resdata_dir, resfig_dir = datahandler.create_resdirs(img_path)
         # ==== Plot Image Slices and Max Projections ====
-        visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap='Greens',
+        visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap='Greens', figsize=(20, 3),
                          savefig=os.path.join(resfig_dir, "sliced_maxproj_raw.png"), hidefig=True)
         z_i, y_i, x_i = int(img_dim[0] // 2), int(img_dim[1] // 2), int(img_dim[2] // 2)
-        visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, x_i=x_i, y_i=y_i, z_i=z_i,
+        visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, x_i=x_i, y_i=y_i, z_i=z_i, figsize=(20, 3),
                          savefig=os.path.join(resfig_dir, "sliced_raw.png"), cmap="Greens_r", hidefig=True)
     else:
         return None
@@ -64,7 +64,7 @@ def main(img_path):
         sampl_mesh = datahandler.load_mesh(os.path.join(resdata_dir, "sampling_mesh.ply"), recalc_normals=True,
                                            clean=False)
     except:
-        print(f">> Failed to load sampling mesh from {img_path}!")
+        print(f"Could not find sampling mesh from {img_path}...")
         return None
     # ==== Plot Image Slices with Mesh Overlay ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[sampl_mesh], slice_depth=1,

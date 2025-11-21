@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Exit immediately on setup errors, but allow jobs to fail
 set -e
 
 # ------------------------------
 # User settings
 # ------------------------------
 PYTHON="/Users/andreadi/venv/bin/python"
-SCRIPT="/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_quickvisual.py"
-#SCRIPT="/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_link2dsegmentation.py"
-#SCRIPT="/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_mesh.py"
-ROOT_DIR="/Volumes/roux/AurelienRouxLab/Oriol/Experiments 2 photon with filter/Gastruloids size exp/EXP4_FILTER"
+
+# LIST OF SCRIPTS TO RUN SEQUENTIALLY FOR EACH IMAGE
+SCRIPTS=$(cat <<EOF
+/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_link2dsegmentation.py
+EOF
+)
+#/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_mesh.py
+#/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_quickvisual.py
+
+ROOT_DIR="/Volumes/roux/AurelienRouxLab/Oriol/Experiments 2 photon with filter/Gastruloids size exp/EXP4_FILTER_CLEAN"
 MAX_JOBS=12
 
 # ------------------------------
@@ -39,15 +44,18 @@ echo
 process_file() {
     local file="$1"
     echo ">> Processing $file ..."
-    if ! "$PYTHON" "$SCRIPT" --img_path "$file"; then
-        echo "[!] Failed on: $file" >&2
-    fi
-}
 
-# Export for GNU Parallel
+    # read line-by-line, preserving spaces
+    while IFS= read -r script; do
+        echo "   -> Running: $(basename "$script")"
+        if ! "$PYTHON" "$script" --img_path "$file"; then
+            echo "[!] Failed on $file with script $script" >&2
+        fi
+    done <<< "$SCRIPTS"
+}
 export -f process_file
 export PYTHON
-export SCRIPT
+export SCRIPTS
 
 # ------------------------------
 # Run in parallel
@@ -55,6 +63,6 @@ export SCRIPT
 parallel --bar -j "$MAX_JOBS" process_file ::: "${TIFF_FILES[@]}"
 
 echo
-echo "--------------------------------------"
+echo "------------------------------------------------"
 echo ">> All done (errors, if any, are printed above)."
-echo "--------------------------------------"
+echo "------------------------------------------------"

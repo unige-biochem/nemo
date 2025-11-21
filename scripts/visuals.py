@@ -11,10 +11,12 @@ import os.path
 import shutil
 import matplotlib.pyplot as plt
 import napari
-from matplotlib.colors import ListedColormap, Normalize
+from matplotlib.colors import ListedColormap, Normalize, BoundaryNorm
 from matplotlib import colormaps
 import imageio
 from matplotlib import colors as pltcolors
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.cm as cm
 import matplotlib.gridspec as gridspec
 from scipy.interpolate import griddata
 import seaborn as sns
@@ -24,7 +26,7 @@ import trimesh
 #############################################
 # [!!!] Dark/Light Mode for all Plots [!!!] #
 #############################################
-# plt.style.use('dark_background') # DARK
+# plt.style.use('dark_background')  # DARK
 plt.style.use('default')  # LIGHT
 
 
@@ -89,7 +91,7 @@ def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
 # 2D PLOTTING MODULES #
 #######################
 
-def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(18, 3), slice_line_alpha=0.8,
+def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 3), slice_line_alpha=0.8,
              cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None,
              slice_depth=10, mesh_thick=0.1, mesh_alpha=0.3, thresh_alpha=0.8, mesh_colors=None,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
@@ -256,6 +258,28 @@ def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, sa
         plt.xlim(xlim[0], xlim[1])
     plt.ylabel(ylabel)
     plt.grid(True)
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_scatter(x, y, xlabel, ylabel, title, vert_line=None, xlim=None, ylim=None, figsize=(8, 5), savefig="",
+                 hidefig=False, dpi=200):
+    plt.figure(figsize=figsize)
+    plt.title(title)
+    plt.scatter(x, y)
+    if vert_line is not None:
+        plt.axvline(x=vert_line, linestyle="--", color="k")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -578,7 +602,8 @@ def plot_spherical_projection(phi, theta, intensities,
                               invert_y_axis=False, aspect=2,
                               cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=200,
                               hidefig=False, marker_idxs=None, marker_color="yellow",
-                              marker_size=500, marker_alpha=0.9):
+                              marker_size=500, marker_alpha=0.9, marker_vec=None, marker_vec_scale=1.0,
+                              marker_vec_width=0.002, marker_vec_color="red"):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
 
     # Intensity normalization
@@ -618,7 +643,14 @@ def plot_spherical_projection(phi, theta, intensities,
         else:
             ax.scatter(phi[marker_idxs], theta[marker_idxs], c=marker_color, s=marker_size,
                        alpha=marker_alpha)
-
+        # Optional marker vectors (polarisation arrows)
+        if marker_vec is not None:
+            marker_vec_phi, marker_vec_theta, marker_vec_idxs = marker_vec
+            ax.quiver(phi[marker_vec_idxs], theta[marker_vec_idxs],
+                      marker_vec_phi * marker_vec_scale,
+                      marker_vec_theta * marker_vec_scale,
+                      angles='xy', scale_units='xy', scale=1,
+                      color=marker_vec_color, alpha=marker_alpha, width=marker_vec_width)
     if invert_y_axis:
         ax.invert_yaxis()
     ax.set_aspect(aspect)
@@ -644,6 +676,38 @@ def plot_spherical_projection(phi, theta, intensities,
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_cylindrical_projection(phi, rho, s, colors, cbar_label="Fluorescence Intensity (a.u.)", hexsize=400,
+                                cmap="magma", manual_vminmax=None, shift_angle_rad=None, title="", savefig="",
+                                hidefig=False, xlabel=fr'Arc length $s$ (um)', ylabel=r'$\rho\,\phi$  (um)',
+                                aspect="equal", dpi=300, figsize=(10, 10)):
+    phi_proj = phi.copy()
+    if shift_angle_rad is not None:
+        phi_proj = (phi - shift_angle_rad + np.pi) % (2 * np.pi) - np.pi
+    y = rho * phi_proj
+    _, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.set_title(title)
+    if manual_vminmax is None:
+        vmin, vmax = colors.min(), colors.max()
+    else:
+        vmin, vmax = manual_vminmax
+    img = ax.hexbin(s, y, C=colors, gridsize=hexsize, cmap=cmap,
+                    vmin=vmin, vmax=vmax)
+    plt.colorbar(img, ax=ax, label=cbar_label)
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_aspect(aspect)
+    ax.axhline(0, color="grey", linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
     if not hidefig:
         plt.show()
     else:
@@ -934,6 +998,214 @@ def plot_violinplot(sequence_data, sequence_labels, title, sequence_label="Time"
 
     plt.title(title)
     plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_qsphi_profiles(dir_s, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean,
+                        y_limits=None, figsize=(10, 5), savefig="", hidefig=False, dpi=200):
+    # ---- Plot ----
+    plt.figure(figsize=figsize)
+
+    # Scatter individual points (optional for context)
+    plt.scatter(dir_s, Q_ss, color='tab:blue', alpha=0.2, s=5)
+    plt.scatter(dir_s, Q_phiphi, color='tab:orange', alpha=0.2, s=5)
+    plt.scatter(dir_s, Q_sphi, color='tab:green', alpha=0.2, s=5)
+
+    # Plot binned mean curves
+    line_ss, = plt.plot(s_bin_centers, Q_ss_mean, color='tab:blue', lw=2)
+    line_pp, = plt.plot(s_bin_centers, Q_phiphi_mean, color='tab:orange', lw=2)
+    line_sp, = plt.plot(s_bin_centers, Q_sphi_mean, color='tab:green', lw=2)
+
+    # Create custom legend handles using the lines (so markers appear solid)
+    plt.legend([line_ss, line_pp, line_sp], [r'$Q_{ss}$', r'$Q_{\phi\phi}$', r'$Q_{s\phi}$'], loc='upper right')
+
+    # Labels and title
+    plt.xlabel("Arc length $s$ (µm)", fontsize=12)
+    plt.ylabel("Component magnitude", fontsize=12)
+    plt.title(r"Tangential Nematic Order in $s$-$\phi$ basis", fontsize=14)
+    plt.grid(True)
+    if y_limits is not None:
+        plt.ylim(y_limits)
+    plt.yticks(ticks=np.arange(-0.6, 0.6, 0.1))
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_qsphi_profiles_separated_phi(dir_s, dir_phi, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi,
+                                      Q_sphi_mean, y_limits=None,
+                                      figsize=(10, 10), savefig="", hidefig=False, dpi=200):
+    # --- Figure with 3 stacked subplots ---
+    fig, axes = plt.subplots(
+        3, 1, figsize=figsize, sharex=True,
+        gridspec_kw={'hspace': 0.15}
+    )
+
+    Q_components = [
+        (Q_phiphi, Q_phiphi_mean, r"$Q_{\phi\phi}$"),
+        (Q_ss, Q_ss_mean, r"$Q_{ss}$"),
+        (Q_sphi, Q_sphi_mean, r"$Q_{s\phi}$"),
+    ]
+
+    # Use same colormap for all subplots
+    cmap = "hsv"
+    phi_min, phi_max = -np.pi, np.pi
+    for ax, (Q_raw, Q_mean, label) in zip(axes, Q_components):
+        # Scatter: raw Q values colored by φ
+        sc = ax.scatter(
+            dir_s, Q_raw, c=dir_phi,
+            cmap=cmap, vmin=phi_min, vmax=phi_max,
+            s=8, alpha=1.0
+        )
+        ax.plot(
+            s_bin_centers, Q_mean,
+            color="k", lw=2, label="mean"
+        )
+        ax.set_ylabel(label, fontsize=12)
+        ax.grid(True)
+        if y_limits is not None:
+            ax.set_ylim(y_limits)
+        ax.legend(loc="upper right")
+    axes[-1].set_xlabel(r"Arc length $s$ (µm)", fontsize=12)
+    divider = make_axes_locatable(axes[0])
+    cax = divider.append_axes("right", size="3%", pad=0.35)
+    cbar = plt.colorbar(sc, cax=cax, orientation='vertical',
+                        ticks=[-np.pi, 0, np.pi])
+    cbar.set_ticklabels([r'$-\pi$', r'$0$', r'$\pi$'])
+    cbar.set_label(r'$\phi$ (rad)')
+
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_rho_profile(mesh_s, mesh_rho, mesh_phi, img_unit, figsize=(10, 4), savefig="", hidefig=False, dpi=200):
+    fig, ax = plt.subplots(figsize=figsize)
+    sc = ax.scatter(
+        mesh_s, mesh_rho,
+        c=mesh_phi,
+        cmap='hsv',
+        s=5,
+        alpha=0.7,
+        vmin=-np.pi,
+        vmax=np.pi
+    )
+    ax.set_xlabel(f'Arc length $s$ ({img_unit})')
+    ax.set_ylabel(fr'Radial distance $\rho$ ({img_unit})')
+    ax.set_title(fr'Radial distance $\rho$ to curve ({img_unit})')
+    ax.grid(True)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="3%", pad=0.1)
+    cbar = plt.colorbar(sc, cax=cax, orientation='vertical', ticks=[-np.pi, 0, np.pi])
+    cbar.set_ticklabels([r'$-\pi$', r'$0$', r'$\pi$'])
+    cbar.set_label(r'$\phi$ (rad)')
+    fig.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.15)
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_rho_profile_evolution(time_points_all, mesh_s_all, mesh_rho_all, figsize=(10, 4), xlabel=None, ylabel=None,
+                               cbarlabel=None, title=None, savefig="", hidefig=False, dpi=200):
+    time_points_all = np.array(time_points_all)
+    time_unique = np.sort(np.unique(time_points_all))
+    cmap = cm.coolwarm(np.linspace(0, 1, len(time_unique)))
+    colors = [cmap[np.where(time_unique == tp)[0][0]] for tp in time_points_all]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    plt.subplots_adjust(right=0.88, top=0.9, bottom=0.15)
+    for i, color in enumerate(colors):
+        s_vals = mesh_s_all[i]
+        rho_vals = mesh_rho_all[i]
+        ax.scatter(s_vals, rho_vals, s=1, alpha=0.007, color=color, label=f"{time_points_all[i]}h")
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=12)
+    if title is not None:
+        ax.set_title(title, fontsize=14)
+    ax.grid(True, alpha=0.3)
+    cmap_listed = ListedColormap(cmap)
+    bounds = np.arange(len(time_unique) + 1) - 0.5
+    norm = BoundaryNorm(bounds, cmap_listed.N)
+    sm = cm.ScalarMappable(cmap=cmap_listed, norm=norm)
+    sm.set_array([])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="3%", pad=0.1)
+    cbar = plt.colorbar(sm, cax=cax, orientation='vertical', ticks=np.arange(len(time_unique)))
+    if cbarlabel is not None:
+        cbar.set_label(cbarlabel, fontsize=12)
+    cbar.ax.set_yticklabels([str(int(tp)) for tp in time_unique])
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_qsphi_profile_evolution(time_points_all, s_bin_centers_all, q_mean_all_dict, figsize=(10, 10), ylim=None,
+                                 xlabel=None,
+                                 cbarlabel=None, title=None, savefig="", hidefig=False, dpi=200):
+    time_points_all = np.array(time_points_all)
+    time_unique = np.sort(np.unique(time_points_all))
+    cmap = cm.coolwarm(np.linspace(0, 1, len(time_unique)))
+    colors = [cmap[np.where(time_unique == tp)[0][0]] for tp in time_points_all]
+    line_styles = {'Q_ss': '-', 'Q_phiphi': '-', 'Q_sphi': '-'}
+    line_widths = {'Q_ss': 3, 'Q_phiphi': 3, 'Q_sphi': 3}
+    component_labels = {'Q_ss': r'$Q_{ss}$', 'Q_phiphi': r'$Q_{\phi\phi}$', 'Q_sphi': r'$Q_{s\phi}$'}
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=figsize)
+    plt.subplots_adjust(hspace=0.15, right=0.88, top=0.93)
+    for ax in axes:
+        ax.axhline(0, c="grey", linestyle="--")
+    for ax, comp in zip(axes, ['Q_phiphi', 'Q_ss', 'Q_sphi']):
+        for i, color in enumerate(colors):
+            s_centers_norm = s_bin_centers_all[i]
+            Q_mean = q_mean_all_dict[comp][i]
+            ax.plot(s_centers_norm, Q_mean, color=color,
+                    lw=line_widths[comp], linestyle=line_styles[comp])
+        ax.set_ylabel(f"{component_labels[comp]}", fontsize=13)
+        ax.grid(True, alpha=0.3)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+
+    if xlabel is not None:
+        axes[-1].set_xlabel(xlabel, fontsize=13)
+    if title is not None:
+        axes[0].set_title(title, fontsize=15, pad=20)
+    cmap_listed = ListedColormap(cmap)
+    bounds = np.arange(len(time_unique) + 1) - 0.5  # center ticks
+    norm = BoundaryNorm(bounds, cmap_listed.N)
+    sm = cm.ScalarMappable(cmap=cmap_listed, norm=norm)
+    sm.set_array([])
+
+    cbar = fig.colorbar(sm, ax=axes, orientation='vertical', fraction=0.04, pad=0.03, ticks=np.arange(len(time_unique)))
+    if cbarlabel is not None:
+        cbar.set_label(cbarlabel, fontsize=12)
+    cbar.ax.set_yticklabels([str(int(tp)) for tp in time_unique])
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -1241,7 +1513,8 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                                 mesh_vert_colors="red", vec_opacity=1.0, vector_style="line",
                                 mesh_blending="opaque", mesh_color_override=None, mesh_opacity=1.0,
                                 mesh_shading="none", markers=None, marker_colors="yellow", marker_size=5, img=None,
-                                scale=None, img_opacity=0.5):
+                                scale=None, img_opacity=0.5, marker_vectors=None, marker_vectors_color="red",
+                                marker_vectors_length=100, marker_vector_width=2):
     print(">> Rendering mesh and colored vertices...")
     vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
     if type(mesh_vert_colors) == str:
@@ -1262,8 +1535,6 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
     viewer = napari.Viewer()
     if img is not None and scale is not None:
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip", colormap="green")
-    # viewer.add_surface((mesh.vertices, mesh.faces), shading='none',
-    #                    blending="translucent_no_depth", colormap="white")
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=mesh_vert_colors, shading=mesh_shading,
                        opacity=mesh_opacity, blending=mesh_blending)
     centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
@@ -1285,6 +1556,13 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                  marker_colors])
         viewer.add_points(markers, name='Defects', shading="none", opacity=0.6, blending="opaque",
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
+
+    if marker_vectors is not None:
+        viewer.add_vectors(
+            data=np.stack((marker_vectors[0], marker_vectors[1]), axis=1),
+            edge_color=marker_vectors_color, edge_width=marker_vector_width,
+            length=marker_vectors_length, vector_style="arrow"
+        )
     viewer.dims.ndisplay = 3
     napari.run()
 

@@ -54,8 +54,8 @@ def main(img_path):
     resdata_dir, resfig_dir = datahandler.create_resdirs(img_path)
 
     # ==== Import, Visualise and Analysie 2D segmentation ====
-    # patch_avg = ["radius", 5]
-    patch_avg = ["nearest", 6]
+    patch_avg = ["radius", 20]
+    # patch_avg = ["nearest", 6]
     patch_type = patch_avg[0]
     patch_size = patch_avg[1]
     if not patch_type in ["radius", "nearest"]:
