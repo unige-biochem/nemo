@@ -331,6 +331,22 @@ def get_shuffled_cmap(mask, cmap_name="nipy_spectral"):
     return plt.cm.colors.ListedColormap(colors)
 
 
+def colour_dist_test(distances, radial_points, mesh, radial_intensities, cmap="turbo"):
+    print(">> Colouring based on distance...")
+    cmap = cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    norm = Normalize(vmin=np.min(distances), vmax=np.max(distances))
+    normed_distances = norm(np.tile(distances, radial_points.shape[0]))
+    dist_color = cmap(normed_distances)
+    intensities_flat = (radial_intensities.ravel() - np.min(radial_intensities)) / (
+            np.max(radial_intensities) - np.min(radial_intensities) + 1e-12
+    )
+    dist_color[:, :3] *= intensities_flat[:, None]
+    dist_color[:, 3] = 0.5
+    dist_color_reshaped = dist_color.reshape(len(mesh.vertices), len(distances), 4)
+    dist_color_final = np.max(dist_color_reshaped, axis=1)
+    return dist_color_final
+
+
 def plot_img_2d_masks(matrix, segmentation_mask, unit="px", figsize=(4, 3), savefig="", dpi=200,
                       title="", origin="upper", cmap_label="", remove_axes=False, scale=(1, 1, 1),
                       hidefig=False, alpha=0.7, cmap="nipy_spectral", mask_outline="black"):
@@ -1559,7 +1575,7 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
 
     if marker_vectors is not None:
         viewer.add_vectors(
-            data=np.stack((marker_vectors[0], marker_vectors[1]), axis=1),
+            data=np.stack((marker_vectors[:, :3], marker_vectors[:, 3:]), axis=1),
             edge_color=marker_vectors_color, edge_width=marker_vector_width,
             length=marker_vectors_length, vector_style="arrow"
         )

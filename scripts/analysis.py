@@ -20,6 +20,7 @@ import scipy.sparse as sp
 from skimage.filters import threshold_yen
 import trimesh
 from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
+from scripts.datahandler import load_array
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 from sklearn.decomposition import PCA
@@ -157,16 +158,6 @@ def rescale_val_xyz(val, scale, debug=False):
             print(">> Adjusting due to better z resolution than xy resolution...")
         return val, val * zscale / xyscale, val * zscale / xyscale
 
-
-# def filter_valid_patches(verts, idxs_neigh, factor=0.1):
-#     centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
-#     reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
-#     center_reldist = reldists[:, 0]
-#     keep_mask = center_reldist < factor * np.max(reldists, axis=1)
-#     valid_patch_idxs = idxs_neigh[keep_mask]
-#     valid_idxs = np.argwhere(keep_mask)[:, 0]
-#     print(f"{len(valid_patch_idxs)} valid, {len(centroids_patches) - len(valid_patch_idxs)} invalid ! ")
-#     return valid_patch_idxs, valid_idxs
 
 def filter_valid_patches(verts, idxs_neigh, factor=0.1):
     # Handle list-of-lists (radius-search)
@@ -1596,21 +1587,6 @@ def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
 ##############################################
 # 2D+ ORIENTATION & NEMATIC ANALYSIS MODULES #
 ##############################################
-# def tan_proj(neighbors_coords, central_normal):
-#     print(f">> Locally flattening coords ...")
-#     central_coord = neighbors_coords[:, 0, :]
-#     cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
-#                                   [0, 1, 0],
-#                                   [1, 0, 0])
-#     tangent_x_axes = np.cross(central_normal, cross_basis_vector)
-#     tangent_x_axes /= np.linalg.norm(tangent_x_axes, axis=1, keepdims=True)
-#     tangent_y_axes = np.cross(central_normal, tangent_x_axes)
-#     tangent_y_axes /= np.linalg.norm(tangent_y_axes, axis=1, keepdims=True)
-#     translated_points = neighbors_coords - central_coord[:, np.newaxis, :]
-#     local_x = np.einsum('nij,nj->ni', translated_points, tangent_x_axes)
-#     local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
-#     local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
-#     return local_2d_coordinates, tangent_x_axes, tangent_y_axes
 
 def tan_proj(neighbors_coords, central_normal):
     print(f">> Locally flattening coords ...")
@@ -1660,23 +1636,6 @@ def tan_proj(neighbors_coords, central_normal):
         return local_2d_coordinates, tangent_x_axes, tangent_y_axes
 
 
-# def tan_interp_batch(coords, intensities, grid_size):
-#     batch_size, num_points, _ = coords.shape
-#     u_min = coords[:, :, 0].min(axis=1)[:, None, None]
-#     u_max = coords[:, :, 0].max(axis=1)[:, None, None]
-#     v_min = coords[:, :, 1].min(axis=1)[:, None, None]
-#     v_max = coords[:, :, 1].max(axis=1)[:, None, None]
-#     lin_u = np.linspace(0, 1, grid_size)
-#     lin_v = np.linspace(0, 1, grid_size)
-#     grid_x, grid_y = np.meshgrid(lin_u, lin_v, indexing="ij")
-#     grid_x = u_min + (u_max - u_min) * grid_x
-#     grid_y = v_min + (v_max - v_min) * grid_y
-#     grid_points = np.stack([grid_x, grid_y], axis=-1).reshape(batch_size, -1, 2)
-#     trees = [KDTree(coords[i]) for i in range(batch_size)]
-#     idxs = np.array([tree.query(grid_points[i], k=1)[1] for i, tree in enumerate(trees)])
-#     grid_z = np.take_along_axis(intensities, idxs, axis=1).reshape(batch_size, grid_size, grid_size)
-#     return grid_x, grid_y, grid_z
-
 def tan_interp_batch(coords, intensities, grid_size):
     if isinstance(coords, list):
         batch_size = len(coords)
@@ -1701,34 +1660,6 @@ def tan_interp_batch(coords, intensities, grid_size):
         gz = inten[idx].reshape(grid_size, grid_size)
         grid_z.append(gz)
     return grid_x, grid_y, grid_z
-
-
-# def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None,
-#                          debug_grid_x=None, debug_grid_y=None, debug_grid_z=None, tan_cords=None, debug_line_length=5):
-#     dir_vec = np.zeros(shape=(len(tan_x), 3))
-#     if debug:
-#         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size,
-#                                            onlytheta=True) * -1
-#         theta_center = np.radians(theta_all[theta_all.shape[0] // 2, theta_all.shape[1] // 2])
-#         dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * \
-#                              tan_y[debug_idx]
-#         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
-#         plot_interp_grid(grid_x=debug_grid_x, grid_y=debug_grid_y, grid_z=debug_grid_z,
-#                          points=tan_cords[debug_idx], theta=theta_center, linelength=debug_line_length)
-#         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
-#                     remove_axes=True)
-#     else:
-#         print(f"Running batch analysis for {big_grid.shape} and tensor box size: {box_size} ")
-#         theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
-#         theta_mid_idx = theta_all.shape[1] // 2
-#         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
-#         theta_center = np.radians(theta_all[center_indices, theta_mid_idx])
-#
-#         dir_vec = np.cos(theta_center)[:, None] * tan_x + \
-#                   np.sin(theta_center)[:, None] * tan_y
-#     directors = np.column_stack((vertices, dir_vec))
-#     print(f"Finished! {len(directors)} director(s)!")
-#     return directors
 
 
 def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None, debug_line_length=5):
@@ -1975,6 +1906,153 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
         return m_charge, calc_charge_loop_idxs
     else:
         return m_charge, calc_charge_loop_idxs, m_line_charge, m_gauss_contribution
+
+
+def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
+                                 defect_idxs_calc, m_charge,
+                                 patch_type, patch_size,
+                                 show_profile=False):
+    pol_positions, pol_vectors, pol_idxs = [], [], []
+
+    directors_v = directors[:, 3:6]
+    directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
+    if show_profile:
+        import matplotlib.pyplot as plt
+    for d_idx, charge in zip(defect_idxs_calc, m_charge):
+        if not (0.4 < abs(charge) < 0.6):
+            continue
+
+        core_idx_sel = idxs_sel[d_idx]
+        core_vertex = mesh.vertices[core_idx_sel]
+
+        # --- Neighbourhood ---
+        if patch_type == "radius":
+            neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
+                                                 custom_probes=[core_vertex],
+                                                 r=patch_size)[0]
+        elif patch_type == "nearest":
+            neigh_idxs_sel = coord_search_neighbours(mesh.vertices[idxs_sel],
+                                                     custom_probes=[core_vertex],
+                                                     k=patch_size)[0]
+        else:
+            raise ValueError(f"Unknown patch type: {patch_type}")
+
+        if len(neigh_idxs_sel) < 10:
+            continue
+
+        neigh_dirs = directors_v[neigh_idxs_sel]
+        neigh_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]]
+
+        # --- Tangent basis ---
+        normal = vertex_normals[core_idx_sel]
+        normal /= np.linalg.norm(normal)
+        t1 = np.cross(normal, [1, 0, 0])
+        if np.linalg.norm(t1) < 1e-6:
+            t1 = np.cross(normal, [0, 1, 0])
+        t1 /= np.linalg.norm(t1)
+        t2 = np.cross(normal, t1)
+
+        rel_pos = neigh_pos - core_vertex
+        x = rel_pos @ t1
+        y = rel_pos @ t2
+        r = np.sqrt(x ** 2 + y ** 2)
+        theta = np.arctan2(y, x)
+
+        d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
+        phi = np.arctan2(d_proj[:, 1], d_proj[:, 0])
+
+        # --- Headless nematic complex representation ---
+        q = np.exp(1j * 2 * phi)
+
+        # --- Compute polarisation ---
+        if charge > 0:  # +1/2 defect
+            # Vector sum method: direction of field asymmetry
+            ex = np.cos(theta)
+            ey = np.sin(theta)
+            w = np.cos(2 * (phi - theta))
+            pol_vec_2d = np.array([np.sum(w * ex), np.sum(w * ey)])
+            pol_vec_2d /= np.linalg.norm(pol_vec_2d) + 1e-12
+            pol = pol_vec_2d[0] * t1 + pol_vec_2d[1] * t2
+            pol_positions.append(core_vertex)
+            pol_vectors.append(pol)
+            pol_idxs.append(d_idx)
+        else:  # -1/2 defect (threefold symmetric)
+            base_angle = 2 / 3 * np.angle(np.sum(q))
+            for k in range(3):
+                angle = base_angle + k * 2 * np.pi / 3
+                pol = np.cos(angle) * t1 + np.sin(angle) * t2
+                pol_positions.append(core_vertex)
+                pol_vectors.append(pol)
+                pol_idxs.append(d_idx)
+        if show_profile:
+            fig, ax = plt.subplots(figsize=(5, 5))
+            ax.set_aspect('equal')
+            ax.set_title(f"Defect {d_idx}, charge {charge:.2f}")
+
+            scale = 0.15 * patch_size
+            ax.quiver(x, y,
+                      np.cos(phi) * scale, np.sin(phi) * scale,
+                      color='blue', alpha=0.5, label='Directors')
+            if charge > 0:
+                ax.quiver(0, 0,
+                          pol_vec_2d[0] * scale * 3,
+                          pol_vec_2d[1] * scale * 3,
+                          color='red', width=0.02, label='Polarisation')
+            else:
+                for k in range(3):
+                    angle = base_angle + k * 2 * np.pi / 3
+                    ax.quiver(0, 0,
+                              np.cos(angle) * scale * 3,
+                              np.sin(angle) * scale * 3,
+                              color='red', width=0.02)
+
+            ax.scatter(0, 0, color='k', s=50, marker='x', label='Core')
+            ax.legend()
+            plt.show()
+
+    print(f"Found {len(pol_positions)} polarisation vectors!")
+    return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)
+
+
+def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
+                      director_name_prefix="directors-avg_2dcurved_"):
+    print(f"Loading layer 1 {layer_name_1}...")
+    resdata_dir_layer_1 = os.path.join(resdata_dir, layer_name_1)
+    directors_2dcurved_avg_1 = load_array(f"{director_name_prefix}{patch_label_1}",
+                                          folderpath=resdata_dir_layer_1)
+    tan_x_1 = load_array("tan_x", folderpath=resdata_dir_layer_1)
+    tan_y_1 = load_array("tan_y", folderpath=resdata_dir_layer_1)
+    print(f"Loading layer 2 {layer_name_2}...")
+
+    resdata_dir_layer_2 = os.path.join(resdata_dir, layer_name_2)
+    directors_2dcurved_avg_2 = load_array(f"{director_name_prefix}{patch_label_2}",
+                                          folderpath=resdata_dir_layer_2)
+    tan_x_2 = load_array("tan_x", folderpath=resdata_dir_layer_2)
+    tan_y_2 = load_array("tan_y", folderpath=resdata_dir_layer_2)
+
+    joint_directors_2dcurved_avg = np.concatenate((directors_2dcurved_avg_1, directors_2dcurved_avg_2), axis=0)
+    joint_tan_x = np.concatenate((tan_x_1, tan_x_2), axis=0)
+    joint_tan_y = np.concatenate((tan_y_1, tan_y_2), axis=0)
+
+    coords1 = directors_2dcurved_avg_1[:, :3]
+    coords2 = directors_2dcurved_avg_2[:, :3]
+    neigh_in_set2 = coord_search_neighbours(coords2, custom_probes=coords1, k=1, n_process=8).ravel()
+    N1 = len(coords1)
+    N2 = len(coords2)
+    pair_1 = np.column_stack([
+        np.arange(N1),
+        neigh_in_set2 + N1
+    ])
+    pair_2 = np.column_stack([
+        np.arange(N1, N1 + N2),
+        np.arange(N1, N1 + N2)
+    ])
+    joint_neigh_idxs = np.vstack([pair_1, pair_2])
+    S_2dcurv_interlayer, n_avg_2dcurv_interlayer = avg_tan_nem_tens(t1_cov=joint_tan_x, t2_cov=joint_tan_y,
+                                                                    directors=joint_directors_2dcurved_avg,
+                                                                    neigh_idxs=joint_neigh_idxs)
+    crisscross_mag = 1 - S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)]
+    return crisscross_mag, directors_2dcurved_avg_1, directors_2dcurved_avg_2
 
 
 #############################################
