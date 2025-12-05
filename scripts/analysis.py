@@ -20,7 +20,7 @@ import scipy.sparse as sp
 from skimage.filters import threshold_yen
 import trimesh
 from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
-from scripts.datahandler import load_array
+from scripts.datahandler import load_array, clean_mesh
 from sklearn.neighbors import KDTree as KDTreeSklearn
 import pyvista as pv
 from sklearn.decomposition import PCA
@@ -527,19 +527,7 @@ def find_connected_meshes(mesh):
 ###########################
 # MESH PROCESSING MODULES #
 ###########################
-def clean_mesh(mesh):
-    mesh = mesh.copy()
-    verts, faces, normals = mesh.vertices, mesh.faces, mesh.vertex_normals
-    invalid_normals = np.linalg.norm(normals, axis=1) < 0.9
-    valid_verts = verts[~invalid_normals]
-    valid_normals = normals[~invalid_normals]
-    vertex_map = np.cumsum(~invalid_normals) - 1
-    invalid_face_mask = np.any(invalid_normals[faces], axis=1)
-    valid_faces = vertex_map[faces[~invalid_face_mask]]
-    if np.sum(invalid_normals) > 0:
-        print(f"[!] Cleaned {np.sum(invalid_normals)} out of {len(mesh.vertex_normals)} !")
-    mesh_cleaned = trimesh.Trimesh(vertices=valid_verts, faces=valid_faces, vertex_normals=valid_normals)
-    return mesh_cleaned
+
 
 
 def mesh_properties(mesh, unit):

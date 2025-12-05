@@ -11,7 +11,6 @@ import os, re
 import numpy as np
 import tifffile
 import trimesh
-from scripts.analysis import clean_mesh
 from PIL import Image
 import imageio.v2 as imageio
 
@@ -66,6 +65,11 @@ def load_png(filepath):
         return None
     else:
         return np.array(Image.open(filepath))
+
+
+#####################
+# IMAGE I/O MODULES #
+#####################
 
 
 def save_gif_multiple(folderpath, frame_len_ms=100):
@@ -126,6 +130,22 @@ def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
 ####################
 # MESH I/O MODULES #
 ####################
+
+def clean_mesh(mesh):
+    mesh = mesh.copy()
+    verts, faces, normals = mesh.vertices, mesh.faces, mesh.vertex_normals
+    invalid_normals = np.linalg.norm(normals, axis=1) < 0.9
+    valid_verts = verts[~invalid_normals]
+    valid_normals = normals[~invalid_normals]
+    vertex_map = np.cumsum(~invalid_normals) - 1
+    invalid_face_mask = np.any(invalid_normals[faces], axis=1)
+    valid_faces = vertex_map[faces[~invalid_face_mask]]
+    if np.sum(invalid_normals) > 0:
+        print(f"[!] Cleaned {np.sum(invalid_normals)} out of {len(mesh.vertex_normals)} !")
+    mesh_cleaned = trimesh.Trimesh(vertices=valid_verts, faces=valid_faces, vertex_normals=valid_normals)
+    return mesh_cleaned
+
+
 def load_mesh(filepath, recalc_normals, clean=True):
     print(f">> Loading mesh {filepath}...")
     mesh = trimesh.load(filepath)
