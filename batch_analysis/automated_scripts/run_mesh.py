@@ -24,11 +24,12 @@ def parse_args():
     parser.add_argument("--no_smoothing", action=argparse.BooleanOptionalAction, help="Do not smoothen mesh")
     parser.add_argument("--box_size", default=2, type=int, help="Size of the marching cubes box")
     parser.add_argument("--overwrite", action=argparse.BooleanOptionalAction, help="Mesh again")
+    parser.add_argument("--show_figures", action=argparse.BooleanOptionalAction, help="Show figures")
     args = parser.parse_args()
     return args
 
 
-def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_size):
+def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_size, show_figures):
     print(f">> Attempting to mesh image {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
@@ -48,6 +49,8 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
     custom_scaling = None  # please use (z, y, x)
     # ==== [Optional] Overwrite unit with FIJI Values ====
     custom_unit = "um"  # as string
+
+    hidefig = not show_figures
     # ==== Load Image ====
     img_load = analysis.load_img_virtual(path=img_path, t_sel_idx=t_select, c_sel_idx=c_select,
                                          reduce_xy=xy_reduce_factor,
@@ -58,7 +61,6 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
     img_raw, img_dim, img_scale, img_unit = img_load
     # ==== Create Folder Structure ====
     resdata_dir, resfig_dir = datahandler.create_resdirs(img_path)
-    overwrite = True
 
     if os.path.exists(os.path.join(resdata_dir, "sampling_mesh_raw.ply")):
         print(f">> [!] Image already meshed!")
@@ -70,12 +72,15 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
                 print(f"Number of sampling vertices: {len(sampl_mesh.vertices)} !")
                 # ==== Plot Image Slices with Mesh Overlay ====
                 visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[sampl_mesh], slice_depth=1,
-                                 savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh-raw.png"), hidefig=True)
+                                 savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh-raw.png"), hidefig=hidefig)
                 mesh_slice_max = np.array([img_scale[i] * img_dim[i] for i in range(len(img_scale))]).max() / 2
                 visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[sampl_mesh],
                                  slice_depth=mesh_slice_max, mesh_alpha=0.05,
                                  savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh-raw_maxproj.png"),
-                                 hidefig=True)
+                                 hidefig=hidefig)
+                visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[sampl_mesh],
+                                 slice_depth=mesh_slice_max, mesh_alpha=0.05,hidefig=hidefig,
+                                 savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh_maxproj.png"))
             except:
                 print(f"[!] An eror occured visualising sampling mesh of {img_raw}!")
             return None
@@ -85,7 +90,7 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
 
     # ==== Plot Image Slices ====
     visuals.plot_img(img=img_blur, scale=img_scale, unit=img_unit, cmap="inferno",
-                     savefig=os.path.join(resfig_dir, "sliced_blur.png"), hidefig=True)
+                     savefig=os.path.join(resfig_dir, "sliced_blur.png"), hidefig=hidefig)
     # ==== Yen Threshold Image ====
     if img_thresh_val is None:
         # img_thresh_val = np.min([analysis.yen_thresh(img_blur[:, :, img_dim[2] // i]) for i in np.arange(2, 6)])
@@ -94,8 +99,6 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
              analysis.yen_thresh(img_blur[:, img_dim[1] // 2, :]),
              analysis.yen_thresh(img_blur[img_dim[0] // 2, :, :])])
         img_thresh_val *= 0.11
-        # img_thresh_val *= 2.0
-        img_thresh_val = 5
         # img_thresh_val = np.min([analysis.yen_thresh(img_blur[:, :, int(img_dim[2] * i)]) for i in np.linspace(0.4, 0.6, 10)])
 
     # ==== Binarise Image using Threshold ====
@@ -103,7 +106,7 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
 
     # ==== Plot Image Slices ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit, savefig=os.path.join(resfig_dir, "sliced_thresh.png"),
-                     cmap="inferno", thresh_mask=img_thresh, hidefig=True)
+                     cmap="inferno", thresh_mask=img_thresh, hidefig=hidefig)
 
     # ==== Segment Surface Mesh(es) ====
     full_mesh = analysis.marching_cubes(img=img_thresh, scale=img_scale, level=0.5, step_size=box_size)
@@ -124,14 +127,14 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
         visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
                          savefig=os.path.join(resfig_dir, "sliced_smooth_full-mesh.png"),
                          meshes=[full_mesh, full_mesh_smooth],
-                         mesh_colors=["black", "purple"], hidefig=True)
+                         mesh_colors=["black", "purple"], hidefig=hidefig)
     full_mesh_smooth_subset_all = analysis.find_connected_meshes(mesh=full_mesh_smooth)
     sizes = [mesh.vertices.shape[0] for mesh in full_mesh_smooth_subset_all]
     full_mesh_smooth_subset = full_mesh_smooth_subset_all[np.argmax(sizes)]
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
                      savefig=os.path.join(resfig_dir, "sliced_smooth_full-mesh_sub.png"),
                      meshes=[full_mesh_smooth_subset],
-                     mesh_colors=["purple"], hidefig=True)
+                     mesh_colors=["purple"], hidefig=hidefig)
 
     # ==== Select Sampling Mesh ====
     sampl_mesh = full_mesh_smooth_subset.copy()
@@ -140,7 +143,7 @@ def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_si
     # ==== Plot Image Slices with Mesh Overlay ====
     visuals.plot_img(img=img_raw, scale=img_scale, unit=img_unit,
                      savefig=os.path.join(resfig_dir, "sliced_raw_sampling-mesh-raw.png"), meshes=[sampl_mesh],
-                     hidefig=True)
+                     hidefig=hidefig)
     print(f"Number of sampling points: {len(sampl_mesh.vertices)} !")
     return None
 
@@ -149,5 +152,5 @@ if __name__ == "__main__":
     print("======== START NEMO ========")
     args = parse_args()
     main(img_path=args.img_path, img_blur_val=args.blur, img_thresh_val=args.thresh, no_smoothing=args.no_smoothing,
-         overwrite=args.overwrite, box_size=args.box_size)
+         overwrite=args.overwrite, box_size=args.box_size, show_figures=args.show_figures)
     print("======== END NEMO ========")

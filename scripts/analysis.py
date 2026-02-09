@@ -27,7 +27,7 @@ from sklearn.decomposition import PCA
 from skimage.morphology import medial_axis
 from itertools import combinations
 from skimage.morphology import skeletonize_3d
-
+import matplotlib.pyplot as plt
 
 #################
 # BASIC MODULES #
@@ -361,7 +361,9 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
-
+    if os.path.isdir(path):
+        print(f"[!] You gave the NEMO path, not the .tif path !")
+        return None
     with TiffFile(path) as tif:
         series = tif.series[0]
         axes = series.axes
@@ -527,7 +529,6 @@ def find_connected_meshes(mesh):
 ###########################
 # MESH PROCESSING MODULES #
 ###########################
-
 
 
 def mesh_properties(mesh, unit):
@@ -1607,7 +1608,7 @@ def tan_proj(neighbors_coords, central_normal):
         return local_2d_coords_list, tangent_x_axes, tangent_y_axes
 
     else:
-        # Regular uniform array path (vectorized)
+        # Regular uniform array path (vectorised)
         central_coord = neighbors_coords[:, 0, :]
         cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
                                       [0, 1, 0],
@@ -1900,12 +1901,12 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
                                  defect_idxs_calc, m_charge,
                                  patch_type, patch_size,
                                  show_profile=False):
+    pol_vec_2d = None
     pol_positions, pol_vectors, pol_idxs = [], [], []
 
     directors_v = directors[:, 3:6]
     directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
-    if show_profile:
-        import matplotlib.pyplot as plt
+
     for d_idx, charge in zip(defect_idxs_calc, m_charge):
         if not (0.4 < abs(charge) < 0.6):
             continue
@@ -1943,7 +1944,6 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         rel_pos = neigh_pos - core_vertex
         x = rel_pos @ t1
         y = rel_pos @ t2
-        r = np.sqrt(x ** 2 + y ** 2)
         theta = np.arctan2(y, x)
 
         d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
@@ -1951,6 +1951,7 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
 
         # --- Headless nematic complex representation ---
         q = np.exp(1j * 2 * phi)
+        base_angle = None
 
         # --- Compute polarisation ---
         if charge > 0:  # +1/2 defect

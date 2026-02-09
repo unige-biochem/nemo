@@ -29,6 +29,15 @@ import trimesh
 # plt.style.use('dark_background')  # DARK
 plt.style.use('default')  # LIGHT
 
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "serif",
+    "font.size": 11,
+    "axes.titlesize": 14,
+    "axes.labelsize": 12,
+    "text.latex.preamble": r"\usepackage{amsmath}\usepackage{amsfonts}"
+})
+
 
 #################
 # BASIC MODULES #
@@ -563,12 +572,8 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
     ax_parallel.axhline(1, c="darkblue", linestyle="--", alpha=0.5)
     ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_weighted, "s-", label='Weighted by $AR-1$',
                      color='darkblue', alpha=0.7)
-    # ax_parallel.plot(s_parallel_bin_centers, ap_par_binned_s_2d_unweighted, "x--", label='Normalised',
-    #                  color='darkblue', alpha=0.7)
     ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_weighted, "s-", label='Weighted by $AR-1$',
                    color='brown', alpha=0.7)
-    # ax_br_ax2.plot(s_parallel_bin_centers, s_par_orthogonality_unweighted, "x--", label='Normalised',
-    #                color='brown', alpha=0.7)
 
     ax_parallel.set_xlabel(f"A-P || coordinate ({unit})")
     ax_parallel.set_ylabel('Nematic order $S$ weighted by $AR-1$', color='darkblue')
@@ -584,12 +589,8 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
     ax_orthogonal.axhline(1, c="darkblue", linestyle="--", alpha=0.5)
     ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_weighted, "s-",
                        label='Weighted by $AR-1$', color='darkblue', alpha=0.7)
-    # ax_orthogonal.plot(s_orthogonal_bin_centers, ap_orth_binned_s_2d_unweighted, "x--",
-    #                    label='Normalised', color='darkblue', alpha=0.7)
     ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_weighted, "o-", label='Weighted by $AR-1$',
                    color='brown', alpha=0.7)
-    # ax_tr_ax2.plot(s_orthogonal_bin_centers, s_orth_orthogonality_unweighted, "x--", label='Normalised',
-    #                color='brown', alpha=0.7)
     ax_orthogonal.set_xlabel(f"A-P ⊥ coordinate ({unit})")
     ax_orthogonal.set_ylabel('Nematic order $S$ weighted by $AR-1$', color='darkblue')
     ax_orthogonal.tick_params(axis='y', colors='darkblue')
@@ -622,14 +623,15 @@ def plot_spherical_projection(phi, theta, intensities,
                               marker_vec_width=0.002, marker_vec_color="red"):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
 
-    # Intensity normalization
+    # Intensity normalisation
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
 
-    # Vector normalization
+    # Vector normalisation
     if draw_vectors and not isinstance(veccolor, str):
         vec_norm = plt.Normalize(vmin=np.min(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[0],
                                  vmax=np.max(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[1])
-
+    else:
+        vec_norm = None
     fig = plt.figure(figsize=figsize)
     ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])  # left, bottom, width, height
 
@@ -1077,8 +1079,9 @@ def plot_qsphi_profiles_separated_phi(dir_s, dir_phi, s_bin_centers, Q_ss, Q_ss_
     # Use same colormap for all subplots
     cmap = "hsv"
     phi_min, phi_max = -np.pi, np.pi
+    sc = None
     for ax, (Q_raw, Q_mean, label) in zip(axes, Q_components):
-        # Scatter: raw Q values colored by φ
+        # Scatter: raw Q values coloured by φ
         sc = ax.scatter(
             dir_s, Q_raw, c=dir_phi,
             cmap=cmap, vmin=phi_min, vmax=phi_max,
@@ -1212,7 +1215,7 @@ def plot_qsphi_profile_evolution(time_points_all, s_bin_centers_all, q_mean_all_
     if title is not None:
         axes[0].set_title(title, fontsize=15, pad=20)
     cmap_listed = ListedColormap(cmap)
-    bounds = np.arange(len(time_unique) + 1) - 0.5  # center ticks
+    bounds = np.arange(len(time_unique) + 1) - 0.5  # centre ticks
     norm = BoundaryNorm(bounds, cmap_listed.N)
     sm = cm.ScalarMappable(cmap=cmap_listed, norm=norm)
     sm.set_array([])
@@ -1242,10 +1245,15 @@ def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=Non
         color_list = ["green" for _ in range(len(img_list))]
     if title_list is None:
         title_list = ["layer" for _ in range(len(img_list))]
-
+    if type(scale) == tuple:
+        scale_list = [scale for _ in range(len(img_list))]
+    elif type(scale) == list:
+        scale_list = scale
+    else:
+        scale_list = [(1, 1, 1) for _ in range(len(img_list))]
     viewer = napari.Viewer()
     for i, img in enumerate(img_list):
-        viewer.add_image(img, name=title_list[i], colormap=color_list[i], rendering="mip", scale=scale, opacity=
+        viewer.add_image(img, name=title_list[i], colormap=color_list[i], rendering="mip", scale=scale_list[i], opacity=
         opacity_list[i])
     viewer.dims.ndisplay = 3
     napari.run()
