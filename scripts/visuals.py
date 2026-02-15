@@ -1197,6 +1197,9 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
               hide_vectors=True):
     print(">> Rendering mesh...")
     viewer = napari.Viewer()
+    if img is not None:
+        viewer.add_image(img, name="Image", colormap=img_cmap, rendering="mip", scale=scale, opacity=img_opacity)
+
     if mesh_colors is None:
         mesh_colors = ["white" for _ in range(len(mesh_list))]
     if mesh_titles is None:
@@ -1208,15 +1211,13 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
 
     for i, mesh in enumerate(mesh_list):
         viewer.add_surface((mesh.vertices, mesh.faces), name=mesh_titles[i], shading='none', opacity=mesh_opacities[i],
-                           blending="translucent_no_depth", colormap=mesh_colors[i])
+                           blending="translucent", colormap=mesh_colors[i])
         if not hide_vectors:
             viewer.add_vectors(
                 data=np.stack((mesh.vertices[::vec_freq], mesh.vertex_normals[::vec_freq]), axis=1),
                 edge_color=mesh_colors[i], edge_width=vec_edge_width,
                 length=vec_length, opacity=1.0, name=f"{mesh_titles[i]}_normals"
             )
-    if img is not None:
-        viewer.add_image(img, name="Image", colormap=img_cmap, rendering="mip", scale=scale, opacity=img_opacity)
     viewer.dims.ndisplay = 3
     napari.run()
 

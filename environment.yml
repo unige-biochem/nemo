@@ -4,6 +4,8 @@ channels:
   - defaults
 dependencies:
   - python=3.10
+  - setuptools<70.0.0
+  - ipywidgets
   - numpy=1.26.4
   - matplotlib=3.9.2
   - tifffile=2024.8.30
