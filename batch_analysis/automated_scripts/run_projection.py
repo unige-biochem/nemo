@@ -12,7 +12,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from scripts import analysis, datahandler, visuals
 
 # Import python essentials
-import numpy as np
 import argparse
 
 
@@ -68,11 +67,9 @@ def main(img_path, dist_min, dist_max, dist_num, proj_mode, render):
 
     # ==== Projection Logic ====
     layer_label = f"proj_{dist_min}_to_{dist_max}_{img_unit}"
-    dist_middle = dist_min + (dist_max - dist_min) / 2
 
     # ==== Specify Custom Minimum ====
     dist_min_custom = None
-    # dist_min_custom = np.linspace(0, 5, sampl_mesh.vertices.shape[0])
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     if not os.path.exists(resdata_dir_layer):

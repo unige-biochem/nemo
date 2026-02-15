@@ -89,21 +89,12 @@ python --version
 
 2. Install the required dependencies in the virtual environment:
 
-If you have a working **Python 3.9.6** compiler installed, you can directly install all packages using:
-
 ```bash
-pip install -r requirements.txt  
-```  
-
-However, if you have conda installed, you can also follow the following steps in your Anaconda prompt which have been
-tested and work:
-
-```bash
-conda create -n nemo_env python=3.9.6
+conda env create -f environment.yml
 ```
 
 ```bash
-activate nemo_env
+activate nemo-env
 ```
 
 ```bash
@@ -136,7 +127,8 @@ jupyter notebook main.ipynb
 
 ### Batch Analysis
 
-- The **`batch_analysis.py`** script inside the folder **`batch_analysis/`** allows batch processing by combining multiple modules.
+- The **`batch_analysis.py`** script inside the folder **`batch_analysis/`** allows batch processing by combining
+  multiple modules.
 - To use it, simply configure your desired pipeline within the script and run:
 
     ```bash
@@ -164,12 +156,13 @@ generation of test data.
 - If you encounter problems during execution, please test your tools in the  **`sandbox.ipynb`** using Jupyter:
 
 ```bash
-jupyter sandbox.ipynb  
+jupyter extra_gastruloids-testing.ipynb  
 ```
+
 - Or, if you wish to generate a .tiff, or e.g. curved director field, consult **`generator.ipynb`** using Jupyter:
 
 ```bash
-jupyter generator.ipynb  
+jupyter extra_generator.ipynb  
 ```
 
 ---
@@ -197,5 +190,5 @@ persons to whom the Software is furnished to do so, subject to the following con
 - Please cite the project as shown below:
 
 **[!] publication incl. NEMO to be announced  [!]**
- 
+
 2024-2028 Copyright *Konstantinos Andreadis 

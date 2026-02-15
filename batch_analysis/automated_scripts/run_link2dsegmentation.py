@@ -156,18 +156,19 @@ def main(img_path):
             if patch_type == "radius":
                 local_idxs = analysis.coord_search_radius(directors_2d[:, :2], r=patch_size)
                 patch_label = f"r-{patch_size}{img_unit}"
-                title_hist = f"Avg over {patch_size}{img_unit}: Order Scalar $S$"
-                title_render = f"Avg over {patch_size}{img_unit}: Average Directors"
+                # title_hist = f"Avg over {patch_size}{img_unit}: Order Scalar $S$"
+                # title_render = f"Avg over {patch_size}{img_unit}: Average Directors"
             elif patch_type == "nearest":
                 if len(directors_2d) <= patch_size:
                     print(f"Only {len(directors_2d)} directors, using k=2 ...")
                     patch_size = 2
                 local_idxs = analysis.coord_search_neighbours(directors_2d[:, :2], k=patch_size, n_process=8)
                 patch_label = f"k-{patch_size - 1}"
-                title_hist = f"Avg over {patch_size - 1} neighbours: Order Scalar $S$"
-                title_render = f"Avg over {patch_size - 1} neighbours: Average Directors"
+                # title_hist = f"Avg over {patch_size - 1} neighbours: Order Scalar $S$"
+                # title_render = f"Avg over {patch_size - 1} neighbours: Average Directors"
             else:
-                local_idxs = patch_label = title_hist = title_render = None
+                local_idxs = patch_label = None
+                # title_hist = title_render = None
                 print(f"[!] Unknown patch type: {patch_type}")
 
             S_2d_seg_local, n_2d_seg_local = analysis.avg_2d_nem_tens(directors_2d, weights=None,
@@ -283,7 +284,7 @@ def main(img_path):
                               savefig=os.path.join(resfig_dir_2dsliced,
                                                    f"z-{z_sel}_seg_local_S_weighted_hist_{patch_label}.{file_ending}"),
                               hidefig=hide_all_figs, xlim=[0, local_S_weighted_max], dpi=dpi_all_figs)
-    valid_2dseg_idxs = np.array(valid_2dseg_idxs, dtype=int)
+    # valid_2dseg_idxs = np.array(valid_2dseg_idxs, dtype=int)
     # ==== Save Result Figures as .gif ====
     # datahandler.save_gif_multiple(folderpath=os.path.join(resfig_dir, "2d-sliced_analysis"))
     datahandler.save_video_multiple(folderpath=os.path.join(resfig_dir, "2d-sliced_analysis"), ext="mp4")

@@ -21,13 +21,11 @@ import matplotlib.gridspec as gridspec
 from scipy.interpolate import griddata
 import seaborn as sns
 import pandas as pd
-import trimesh
 
 #############################################
 # [!!!] Dark/Light Mode for all Plots [!!!] #
 #############################################
-# plt.style.use('dark_background')  # DARK
-plt.style.use('default')  # LIGHT
+plt.style.use('default')  # LIGHT, for DARK use 'dark_background'
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -340,22 +338,6 @@ def get_shuffled_cmap(mask, cmap_name="nipy_spectral"):
     return plt.cm.colors.ListedColormap(colors)
 
 
-def colour_dist_test(distances, radial_points, mesh, radial_intensities, cmap="turbo"):
-    print(">> Colouring based on distance...")
-    cmap = cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
-    norm = Normalize(vmin=np.min(distances), vmax=np.max(distances))
-    normed_distances = norm(np.tile(distances, radial_points.shape[0]))
-    dist_color = cmap(normed_distances)
-    intensities_flat = (radial_intensities.ravel() - np.min(radial_intensities)) / (
-            np.max(radial_intensities) - np.min(radial_intensities) + 1e-12
-    )
-    dist_color[:, :3] *= intensities_flat[:, None]
-    dist_color[:, 3] = 0.5
-    dist_color_reshaped = dist_color.reshape(len(mesh.vertices), len(distances), 4)
-    dist_color_final = np.max(dist_color_reshaped, axis=1)
-    return dist_color_final
-
-
 def plot_img_2d_masks(matrix, segmentation_mask, unit="px", figsize=(4, 3), savefig="", dpi=200,
                       title="", origin="upper", cmap_label="", remove_axes=False, scale=(1, 1, 1),
                       hidefig=False, alpha=0.7, cmap="nipy_spectral", mask_outline="black"):
@@ -622,26 +604,18 @@ def plot_spherical_projection(phi, theta, intensities,
                               marker_size=500, marker_alpha=0.9, marker_vec=None, marker_vec_scale=1.0,
                               marker_vec_width=0.002, marker_vec_color="red"):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
-
-    # Intensity normalisation
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
-
-    # Vector normalisation
     if draw_vectors and not isinstance(veccolor, str):
         vec_norm = plt.Normalize(vmin=np.min(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[0],
                                  vmax=np.max(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[1])
     else:
         vec_norm = None
     fig = plt.figure(figsize=figsize)
-    ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])  # left, bottom, width, height
-
-    # Main plot
+    ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])
     if hexview:
         ax.hexbin(phi, theta, C=intensities, cmap=cmap, gridsize=hexgridsize, alpha=alpha)
     if ptview:
         ax.scatter(phi, theta, c=intensities, cmap=cmap, s=ptsize, alpha=alpha)
-
-    # Vector overlay
     if draw_vectors:
         if isinstance(veccolor, str):
             ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
@@ -661,7 +635,6 @@ def plot_spherical_projection(phi, theta, intensities,
         else:
             ax.scatter(phi[marker_idxs], theta[marker_idxs], c=marker_color, s=marker_size,
                        alpha=marker_alpha)
-        # Optional marker vectors (polarisation arrows)
         if marker_vec is not None:
             marker_vec_phi, marker_vec_theta, marker_vec_idxs = marker_vec
             ax.quiver(phi[marker_vec_idxs], theta[marker_vec_idxs],
@@ -674,23 +647,17 @@ def plot_spherical_projection(phi, theta, intensities,
     ax.set_aspect(aspect)
     ax.set_xlabel("Phi (deg)")
     ax.set_ylabel("Theta (deg)")
-
-    # Colorbar positions (manual)
-    # Intensity colorbar
-    cax_int = fig.add_axes([0.75, 0.1, 0.03, 0.8])  # moved a bit left
+    cax_int = fig.add_axes([0.75, 0.1, 0.03, 0.8])
     sm_int = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax))
     sm_int.set_array([])
     cbar_int = fig.colorbar(sm_int, cax=cax_int)
     cbar_int.set_label(cmap_label)
-
-    # Vector colorbar
     if draw_vectors and not isinstance(veccolor, str):
-        cax_vec = fig.add_axes([0.82, 0.1, 0.03, 0.8])  # moved further right
+        cax_vec = fig.add_axes([0.82, 0.1, 0.03, 0.8])
         sm_vec = plt.cm.ScalarMappable(cmap=plt.cm.get_cmap(vec_cmap), norm=vec_norm)
         sm_vec.set_array([])
         cbar_vec = fig.colorbar(sm_vec, cax=cax_vec)
         cbar_vec.set_label(vec_cmap_label)
-
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -732,42 +699,21 @@ def plot_cylindrical_projection(phi, rho, s, colors, cbar_label="Fluorescence In
         plt.close()
 
 
-def plot_flattened_neighborhood(local_2d_projection, neighbors_intensities, figsize=(3, 3), hidefig=False):
-    print(">> Plotting the flattened neighborhood...")
-    plt.figure(figsize=figsize)
-    plt.scatter(local_2d_projection[:, 0], local_2d_projection[:, 1], c=neighbors_intensities, cmap='Greys_r', s=50)
-    plt.colorbar(label='Fluorescence Intensity (a.u.)')
-    plt.xlabel('Local X')
-    plt.ylabel('Local y')
-    plt.gca().set_aspect("equal")
-    plt.title('Flattened Neighborhood')
-    if not hidefig:
-        plt.show()
-    else:
-        plt.close()
-
-
 def plot_interp_grid(grid_x, grid_y, grid_z, theta=None, linelength=2, figsize=(4, 3), hidefig=False):
     fig, ax = plt.subplots(figsize=figsize)
-
-    # Plot intensity grid
     contour = ax.contourf(grid_x, grid_y, grid_z, levels=100, cmap='Greys_r')
-
-    # Plot orientation vector if provided
     if theta is not None:
         x_center = (grid_x.min() + grid_x.max()) / 2
         y_center = (grid_y.min() + grid_y.max()) / 2
         x_vec = x_center + np.array([-np.cos(theta), np.cos(theta)]) * linelength / 2
         y_vec = y_center + np.array([-np.sin(theta), np.sin(theta)]) * linelength / 2
         ax.plot(x_vec, y_vec, color="red", linewidth=2, label="Orientation")
-
     ax.set_aspect('equal')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_xlabel('Local X')
     ax.set_ylabel('Local Y')
     ax.set_title('Interpolated Neighborhood')
-
     fig.colorbar(contour, ax=ax, orientation='vertical', label='Fluorescence Intensity (a.u.)')
 
     if not hidefig:
@@ -916,9 +862,9 @@ def animate_img_slices(img, scale, unit, gifpath, gifsuffix, time_spacing=0.1, c
         temp_path = os.path.join(gifpath, "temp")
     create_figdir(temp_path)
     slices = {
-        "Z": (img.shape[0], lambda i: img[i, :, :], scale[1] / scale[2]),
-        "Y": (img.shape[1], lambda i: img[:, i, :], scale[0] / scale[2]),
-        "X": (img.shape[2], lambda i: img[:, :, i], scale[0] / scale[1])
+        "Z": (img.shape[0], lambda j: img[j, :, :], scale[1] / scale[2]),
+        "Y": (img.shape[1], lambda j: img[:, j, :], scale[0] / scale[2]),
+        "X": (img.shape[2], lambda j: img[:, :, j], scale[0] / scale[1])
     }
     temp_files = []
     for axis, (num_slices, slice_func, aspect_ratio) in slices.items():
@@ -1027,23 +973,14 @@ def plot_violinplot(sequence_data, sequence_labels, title, sequence_label="Time"
 
 def plot_qsphi_profiles(dir_s, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean,
                         y_limits=None, figsize=(10, 5), savefig="", hidefig=False, dpi=200):
-    # ---- Plot ----
     plt.figure(figsize=figsize)
-
-    # Scatter individual points (optional for context)
     plt.scatter(dir_s, Q_ss, color='tab:blue', alpha=0.2, s=5)
     plt.scatter(dir_s, Q_phiphi, color='tab:orange', alpha=0.2, s=5)
     plt.scatter(dir_s, Q_sphi, color='tab:green', alpha=0.2, s=5)
-
-    # Plot binned mean curves
     line_ss, = plt.plot(s_bin_centers, Q_ss_mean, color='tab:blue', lw=2)
     line_pp, = plt.plot(s_bin_centers, Q_phiphi_mean, color='tab:orange', lw=2)
     line_sp, = plt.plot(s_bin_centers, Q_sphi_mean, color='tab:green', lw=2)
-
-    # Create custom legend handles using the lines (so markers appear solid)
     plt.legend([line_ss, line_pp, line_sp], [r'$Q_{ss}$', r'$Q_{\phi\phi}$', r'$Q_{s\phi}$'], loc='upper right')
-
-    # Labels and title
     plt.xlabel("Arc length $s$ (µm)", fontsize=12)
     plt.ylabel("Component magnitude", fontsize=12)
     plt.title(r"Tangential Nematic Order in $s$-$\phi$ basis", fontsize=14)
@@ -1064,7 +1001,6 @@ def plot_qsphi_profiles(dir_s, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiph
 def plot_qsphi_profiles_separated_phi(dir_s, dir_phi, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi,
                                       Q_sphi_mean, y_limits=None,
                                       figsize=(10, 10), savefig="", hidefig=False, dpi=200):
-    # --- Figure with 3 stacked subplots ---
     fig, axes = plt.subplots(
         3, 1, figsize=figsize, sharex=True,
         gridspec_kw={'hspace': 0.15}
@@ -1075,13 +1011,10 @@ def plot_qsphi_profiles_separated_phi(dir_s, dir_phi, s_bin_centers, Q_ss, Q_ss_
         (Q_ss, Q_ss_mean, r"$Q_{ss}$"),
         (Q_sphi, Q_sphi_mean, r"$Q_{s\phi}$"),
     ]
-
-    # Use same colormap for all subplots
     cmap = "hsv"
     phi_min, phi_max = -np.pi, np.pi
     sc = None
     for ax, (Q_raw, Q_mean, label) in zip(axes, Q_components):
-        # Scatter: raw Q values coloured by φ
         sc = ax.scatter(
             dir_s, Q_raw, c=dir_phi,
             cmap=cmap, vmin=phi_min, vmax=phi_max,
@@ -1288,15 +1221,6 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
     napari.run()
 
 
-def view_verts(verts, colors="white", opacity=1.0, shading="none", point_size=2, blending="opaque", ):
-    print(">> Rendering vertices...")
-    viewer = napari.Viewer()
-    viewer.add_points(verts, name='Mesh', shading=shading, opacity=opacity, blending=blending,
-                      face_color=colors, border_color=colors, size=point_size)
-    viewer.dims.ndisplay = 3
-    napari.run()
-
-
 def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="opaque",
                        shading="none", opacity=0.2, use_orig_color=True):
     print(">> Rendering colored vertices...")
@@ -1390,35 +1314,6 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
     napari.run()
 
 
-def view_mesh_and_verts(mesh_list, mesh_colors, verts, verts_colors, vec_freq=15, img=None, img_cmap="green",
-                        scale=(1, 1, 1), vec_edge_width=1, vec_length=20, img_opacity=0.4, hide_vectors=True,
-                        use_orig_color=True, verts_size=3):
-    print(">> Rendering mesh and colored vertices...")
-    viewer = napari.Viewer()
-
-    for i, mesh in enumerate(mesh_list):
-        viewer.add_surface((mesh.vertices, mesh.faces), shading='none', opacity=0.3,
-                           blending="translucent_no_depth", colormap=mesh_colors[i])
-        if not hide_vectors:
-            viewer.add_vectors(
-                data=np.stack((mesh.vertices[::vec_freq], mesh.vertex_normals[::vec_freq]), axis=1),
-                edge_color=mesh_colors[i], edge_width=vec_edge_width,
-                length=vec_length, opacity=1.0
-            )
-    if img is not None:
-        viewer.add_image(img, name="Image", colormap=img_cmap, rendering="mip", scale=scale, opacity=img_opacity)
-
-    if use_orig_color:
-        colors_mapped = verts_colors.copy()
-    else:
-        colors_mapped = np.zeros((verts_colors.shape[0], 3))
-        colors_mapped[:, 1] = colors
-    viewer.add_points(verts, name='Mesh', shading="none", opacity=0.6, blending="opaque",
-                      face_color=colors_mapped, border_color=colors_mapped, size=verts_size)
-    viewer.dims.ndisplay = 3
-    napari.run()
-
-
 def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=None, edge_width=0.3, length=10,
                          vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
                          vector_style="line", img=None, scale=None, img_opacity=0.5):
@@ -1490,44 +1385,6 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
             opacity=vec_opacity,
             vector_style=vector_style,
             name=vec_names[i]
-        )
-    viewer.dims.ndisplay = 3
-    napari.run()
-
-
-def view_mesh_dir_field(mesh_list, directors, vec_colors, verts=None, verts_colors=None, vec_length=20,
-                        mesh_colors=None, vec_edge_width=None, vec_opacity=1.0, vector_style="line", pts_size=1,
-                        pts_opacity=1.0, pts_blending="opaque", ):
-    print(">> Rendering mesh and colored vertices...")
-    vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
-    if mesh_colors is None:
-        mesh_colors = ["white" for _ in range(len(mesh_list))]
-    if vec_edge_width is None:
-        vec_edge_width = vec_length / 8
-    viewer = napari.Viewer()
-    for i, mesh in enumerate(mesh_list):
-        viewer.add_surface((mesh.vertices, mesh.faces), shading='none', opacity=0.3,
-                           blending="translucent_no_depth", colormap=mesh_colors[i])
-    centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
-    centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * vec_length
-    centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * vec_length
-    centered_pos = np.column_stack((centered_x, centered_y, centered_z))
-    viewer.add_vectors(
-        data=np.stack((centered_pos, vec_dir), axis=1),
-        edge_color=vec_colors,
-        edge_width=vec_edge_width,
-        length=vec_length,
-        opacity=vec_opacity,
-        vector_style=vector_style
-    )
-    if verts is not None and verts_colors is not None:
-        viewer.add_points(
-            data=verts,
-            border_color=verts_colors,
-            face_color=verts_colors,
-            size=pts_size,
-            opacity=pts_opacity,
-            blending=pts_blending
         )
     viewer.dims.ndisplay = 3
     napari.run()
@@ -1620,18 +1477,3 @@ def view_colored_labels_3d(segmentation_3d, scale, img=None, img_opacity=0.5):
     viewer.add_labels(segmentation_3d, name='segmentation', scale=scale)
     viewer.dims.ndisplay = 3
     napari.run()
-
-
-def create_ellipsoid_meshes(a, b, c, subdivisions=2):
-    base_sphere = trimesh.creation.icosphere(subdivisions=subdivisions, radius=1.0)
-    base_faces = base_sphere.faces
-    base_vertices = base_sphere.vertices
-    meshes = []
-
-    for i in range(len(a)):
-        center = a[i, :3]
-        axes = np.stack([a[i, 3:], b[i, 3:], c[i, 3:]], axis=1)
-        transformed = base_vertices @ axes.T + center
-        meshes.append(trimesh.Trimesh(vertices=transformed, faces=base_faces, process=False))
-
-    return trimesh.util.concatenate(meshes)

@@ -71,28 +71,14 @@ def load_png(filepath):
 # IMAGE I/O MODULES #
 #####################
 
-
-def save_gif_multiple(folderpath, frame_len_ms=100):
-    files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
-    suffixes = np.unique([re.match(r"z-\d+(_.+)\.png", f).group(1) for f in files])
-    for suf in suffixes:
-        print(f">> Saving gif for {suf}...")
-        matched = sorted([f for f in files if f.endswith(suf + ".png")],
-                         key=lambda x: int(re.search(r"z-(\d+)_", x).group(1)))
-        imgs = list(map(lambda f: Image.open(os.path.join(folderpath, f)), matched))
-        imgs[0].save(os.path.join(folderpath, suf[1:] + ".gif"), save_all=True, append_images=imgs[1:],
-                     duration=frame_len_ms, loop=0)
-    print(f">> Saved {len(suffixes)} gif files in {folderpath}!")
-
-
 def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
     files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
     suffixes = np.unique([re.match(r"z-\d+(_.+)\.png", f).group(1) for f in files])
     fps = 1000 / frame_len_ms
 
-    def pad_to_size(img, target_shape, fill=0):
+    def pad_to_size(img, shape_, fill=0):
         h, w = img.shape[:2]
-        th, tw = target_shape[:2]
+        th, tw = shape_[:2]
         pad_top, pad_bottom = (th - h) // 2, th - h - (th - h) // 2
         pad_left, pad_right = (tw - w) // 2, tw - w - (tw - w) // 2
         if img.ndim == 2:
@@ -111,16 +97,11 @@ def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
         matched = sorted([f for f in files if f.endswith(suf + ".png")],
                          key=lambda x: int(re.search(r"z-(\d+)_", x).group(1)))
         imgs = [imageio.imread(os.path.join(folderpath, f)) for f in matched]
-
-        # pad images to same size
         max_h = max(img.shape[0] for img in imgs)
         max_w = max(img.shape[1] for img in imgs)
         target_shape = (max_h, max_w, imgs[0].shape[2] if imgs[0].ndim == 3 else 1)
         imgs = [pad_to_size(img, target_shape) for img in imgs]
-
-        # pad to multiple of 16 for ffmpeg
         imgs = [pad_to_multiple_of_16(img) for img in imgs]
-
         outpath = os.path.join(folderpath, suf[1:] + f".{ext}")
         imageio.mimsave(outpath, imgs, fps=fps)
 
@@ -148,7 +129,11 @@ def clean_mesh(mesh):
 
 def load_mesh(filepath, recalc_normals, clean=True):
     print(f">> Loading mesh {filepath}...")
-    mesh = trimesh.load(filepath)
+    try:
+        mesh = trimesh.load(filepath)
+    except:
+        print(f"[!] Could not load mesh {filepath}!")
+        return None
     if recalc_normals:
         print(f">> Recomputing normals ...")
         mesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh.vertices),
@@ -172,14 +157,18 @@ def save_mesh(mesh, filepath):
 ################################
 def create_dir(directory):
     if not os.path.exists(directory):
-        # print(f">> Creating directory {directory} ...")
         os.makedirs(directory)
 
 
-def create_resdirs(path):
-    # print(f">> Creating result paths for {path}...")
-    resfig_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "figures")
-    resdata_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "data")
+def create_resdirs(path, ct_label=None):
+    if ct_label is not None:
+        resfig_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0],
+                                  ct_label, "figures")
+        resdata_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0],
+                                   ct_label, "data")
+    else:
+        resfig_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "figures")
+        resdata_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "data")
     create_dir(resfig_dir)
     create_dir(resdata_dir)
     return resdata_dir, resfig_dir

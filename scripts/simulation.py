@@ -142,7 +142,6 @@ def point_defect_2d(l, n, defect_type, defect_center=(0, 0)):
         U = np.cos(angle)  # Radial component
         V = np.sin(angle)  # Tangential component
     elif defect_type == "+1  vortex":
-        # Spiral inward: radial + tangential components
         radial_component = -1
         tangential_component = 1
         U = radial_component * np.cos(Theta) - tangential_component * np.sin(Theta)

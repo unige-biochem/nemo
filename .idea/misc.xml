@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="PYTHON" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="PYTHON" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="$USER_HOME$/miniconda3/envs/nemo-env" project-jdk-type="Python SDK" />
 </project>

@@ -8,7 +8,7 @@ Author: Konstantinos Andreadis
 ####################
 import os
 import numpy as np
-from tifffile import imread, TiffFile
+from tifffile import TiffFile
 import zarr
 from scipy.spatial import KDTree
 from skimage import measure
@@ -29,6 +29,7 @@ from itertools import combinations
 from skimage.morphology import skeletonize_3d
 import matplotlib.pyplot as plt
 
+
 #################
 # BASIC MODULES #
 #################
@@ -46,17 +47,6 @@ def coord_search_neighbours(verts, k, custom_probes=None, n_process=8, debug=Fal
         dists, idxs = tree.query(custom_probes, k=k, workers=n_process)
     else:
         dists, idxs = tree.query(verts, k=k)
-    if return_dists:
-        return idxs, dists
-    else:
-        return idxs
-
-
-def multi_coord_search_neighbours(verts_tree, verts_query, k, n_process=8, debug=False, return_dists=False):
-    if debug:
-        print(f">> Searching {k} neighbours with different tree ...")
-    tree = KDTree(verts_tree)
-    dists, idxs = tree.query(verts_query, k=k, workers=n_process)
     if return_dists:
         return idxs, dists
     else:
@@ -160,7 +150,6 @@ def rescale_val_xyz(val, scale, debug=False):
 
 
 def filter_valid_patches(verts, idxs_neigh, factor=0.1):
-    # Handle list-of-lists (radius-search)
     if isinstance(idxs_neigh, list):
         valid_patches = []
         valid_idxs = []
@@ -175,8 +164,6 @@ def filter_valid_patches(verts, idxs_neigh, factor=0.1):
                 valid_idxs.append(i)
         print(f"{len(valid_patches)} valid, {len(idxs_neigh) - len(valid_patches)} invalid patches")
         return valid_patches, np.array(valid_idxs)
-
-    # --- existing vectorised code for ndarray (nearest k) ---
     centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
     reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
     center_reldist = reldists[:, 0]
@@ -220,88 +207,6 @@ def expand_3d_array(array, num):
 ############################
 # IMAGE PROCESSING MODULES #
 ############################
-def load_img(path, norm_vals, reduce_xy=1, reduce_z=1, recalc_z=False, custom_scaling=None, img_unit="um"):
-    print(f">> Loading image {path}...")
-    try:
-        img_raw = imread(path)
-    except:
-        print(f"[!] Image does not exist, aborting !")
-        return None
-    img_dim = img_raw.shape
-    n_dim = len(img_dim)
-    if n_dim != 3:
-        print(f"! Not yet adapted to {n_dim}-D images, aborting !")
-        return None, None, None
-    print(f"{n_dim}D | shape = {img_dim} | size = {round(img_raw.nbytes / 1e6, 2)} MB ")
-    with TiffFile(path) as tif:
-        # ======== XY resolution ========
-        try:
-            xres = tif.pages[0].tags['XResolution'].value
-            yres = tif.pages[0].tags['YResolution'].value
-            xscale = 1 / float(xres[0] / xres[1])
-            yscale = 1 / float(yres[0] / yres[1])
-            print(f"Found xscale = {xscale}, yscale = {yscale} !")
-        except:
-            xscale, yscale = 1, 1
-            print(f"XY scaling absent... using default {xscale, yscale} instead !")
-
-        # ======== Z resolution ========
-        try:
-            zscale = float(next(line for line in tif.pages[0].tags.get('ImageDescription', None).value.splitlines() if
-                                line.startswith("spacing=")).split('=')[1])
-            print(f"Found zscale = {zscale} !")
-        except:
-            zscale = 1.0
-            print(f"Z spacing absent... using default {zscale} instead !")
-        if recalc_z:
-            zscale = np.average([yscale, xscale]) * np.average(img_dim[1:]) / img_dim[0]
-            print(f"Recalculated z spacing as {zscale} !")
-        img_scale = (zscale, yscale, xscale)
-        print(f"Found image scale = {img_scale} !")
-
-    # ======== Overwrite scaling if not found ========
-    if custom_scaling is not None:
-        print(f">> Overwriting scaling with {custom_scaling}...")
-        img_scale = custom_scaling
-
-    # ======== Reduce resolution if needed by averaging ========
-    if reduce_z > 1 or reduce_xy > 1:
-        if reduce_xy > 1:
-            print(f">> Reducing XY resolution by averaging {reduce_xy} pixels...")
-            trimmed_y = (img_dim[1] // reduce_xy) * reduce_xy
-            trimmed_x = (img_dim[2] // reduce_xy) * reduce_xy
-            img_raw = img_raw[:, :trimmed_y, :trimmed_x]
-            new_shape = (
-                img_dim[0],
-                trimmed_y // reduce_xy,
-                reduce_xy,
-                trimmed_x // reduce_xy,
-                reduce_xy,
-            )
-            img_raw = img_raw.reshape(new_shape).mean(axis=(2, 4))
-            img_scale = (img_scale[0], reduce_xy * img_scale[1], reduce_xy * img_scale[2])
-        img_dim = img_raw.shape
-        if reduce_z > 1:
-            print(f">> Reducing Z resolution by averaging {reduce_z} pixels...")
-            trimmed_z = (img_dim[0] // reduce_z) * reduce_z
-            img_raw = img_raw[:trimmed_z, :, :]
-            new_shape = (
-                trimmed_z // reduce_z,
-                reduce_z,
-                img_dim[1],
-                img_dim[2],
-            )
-            img_raw = img_raw.reshape(new_shape).mean(axis=1)
-            img_scale = (reduce_z * img_scale[0], img_scale[1], img_scale[2])
-        img_dim = img_raw.shape
-        print(f"Reduced shape = {img_dim} | scale = {img_scale} | size = {round(img_raw.nbytes / 1e6, 2)} MB !")
-
-    # ======== Norm values if needed ========
-    if norm_vals:
-        print(f">> Norming intensities...")
-        img_raw = normalise_range(img_raw)
-    print(f"Using unit {img_unit}...")
-    return img_raw, img_dim, img_scale, img_unit
 
 
 def get_tiff_scaling(tif):
@@ -530,23 +435,6 @@ def find_connected_meshes(mesh):
 # MESH PROCESSING MODULES #
 ###########################
 
-
-def mesh_properties(mesh, unit):
-    print(
-        f"-#vertices: {len(mesh.vertices)} | #faces = {len(mesh.faces)} | #edges = {len(mesh.edges)} | #vertex_normals = {len(mesh.vertex_normals)}")
-    volume = abs(mesh.volume)
-    area = abs(mesh.area)
-    print(f"-XYZ PTP = {np.ptp(mesh.vertices, axis=0)}")
-    print(f"-XYZ RADIUS = {np.ptp(mesh.vertices, axis=0).mean() / 2}")
-    if volume > 0 and area > 0:
-        print(f"-AREA = {round(area, 2)} {unit}^2 => Exp. radius = {round(np.sqrt(area / (4 * np.pi)), 2)} {unit}")
-        print(
-            f"-VOLUME = {round(volume, 2)} {unit}^3 => Exp. radius = {round((volume / (4 / 3 * np.pi)) ** (1 / 3), 2)} {unit}")
-
-    else:
-        print(f"!Weird mesh, vol={round(volume, 2)} {unit}^3, area={round(area, 2)} {unit}^2")
-
-
 def taubin_smooth_mesh(mesh, n_iter=100, pass_band=0.01, recalc_normals=True):
     print(f">> Taubin smoothing mesh with {n_iter} iterations and pass band {pass_band}...")
     pvmesh = pv.PolyData()
@@ -563,17 +451,6 @@ def taubin_smooth_mesh(mesh, n_iter=100, pass_band=0.01, recalc_normals=True):
     return smooth_trimesh
 
 
-def laplacian_smooth_mesh(mesh, num_neighbors_verts):
-    print(f">> Smoothing mesh ...")
-    mesh = mesh.copy()
-    neigh_idxs = coord_search_neighbours(mesh.vertices, num_neighbors_verts)
-    mesh.vertices = np.average(mesh.vertices[neigh_idxs], axis=1)
-    mesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh.vertices), faces=mesh.faces,
-                                                                   face_normals=mesh.face_normals,
-                                                                   face_angles=mesh.face_angles)
-    return clean_mesh(mesh=mesh)
-
-
 def subdivide_mesh(mesh, max_edge=8):
     mesh = mesh.copy()
     print(f">> Subdividing mesh using max length of {max_edge} for the edges...")
@@ -582,15 +459,7 @@ def subdivide_mesh(mesh, max_edge=8):
     return clean_mesh(mesh=subdiv_mesh)
 
 
-def simplify_mesh(mesh, target_face_count):
-    print(f">> Simplifying {len(mesh.vertices)} vertices to {target_face_count} faces ...")
-    mesh = trimesh.Trimesh(mesh.vertices, mesh.faces)
-    reduced_mesh = mesh.simplify_quadric_decimation(face_count=target_face_count)
-    print(f"New number of vertices = {len(reduced_mesh.vertices)} !")
-    return reduced_mesh
-
-
-def advanced_simplify_mesh(mesh, director_indices, target_face_count=20000):
+def simplify_mesh(mesh, director_indices, target_face_count=20000):
     director_faces_mask = np.any(np.isin(mesh.faces, director_indices), axis=1)
     director_faces = mesh.faces[director_faces_mask]
     locked_vertices = np.unique(director_faces.flatten())
@@ -650,7 +519,7 @@ def fit_sphere(points):
 def fit_ellipsoid(points, fit_rotation=True, fixed_angles=None):
     if fixed_angles is None:
         fixed_angles = [0, 0, 0]
-    print(f">> Fitting ellipsoid to {len(points)} points...")
+    print(f">> Fitting ellipsoid to {len(points)} pts...")
     x0, y0, z0 = np.mean(points, axis=0)
     a, b, c = np.ptp(points, axis=0) / 2
     print(f"GUESS = x0 {x0}, y0 {y0}, z0 {z0}")
@@ -669,11 +538,11 @@ def fit_ellipsoid(points, fit_rotation=True, fixed_angles=None):
             [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf]  # upper bound
         )
 
-    def ellipsoid_func_reduced(params, points):
+    def ellipsoid_func_reduced(params, pts):
         if fit_rotation:
-            return ellipsoid_func(params, points)
+            return ellipsoid_func(params, pts)
         else:
-            return ellipsoid_func(np.concatenate([params, fixed_angles]), points)
+            return ellipsoid_func(np.concatenate([params, fixed_angles]), pts)
 
     fit_result = least_squares(fun=ellipsoid_func_reduced, x0=initial_params, args=(points,), bounds=bounds)
     fit_params = fit_result.x
@@ -718,25 +587,6 @@ def generate_ellipsoid(params, num_points):
     return vertices, normals
 
 
-def generate_sliced_mesh(img, img_scale, xres=1, yres=1, zres=1, normal_vec=None):
-    if normal_vec is None:
-        normal_vec = [1, 0, 0]
-    else:
-        normal_vec /= np.linalg.norm(normal_vec)
-    print(f">> Generating sliced mesh...")
-    img_shape = img.shape
-    x = np.linspace(1, (img_shape[0] - 1) * img_scale[0], xres)
-    y = np.linspace(1, (img_shape[1] - 1) * img_scale[1], yres)
-    z = np.linspace(1, (img_shape[2] - 1) * img_scale[2], zres)
-    xx, yy = np.meshgrid(x, y)
-    verts_ = np.column_stack([np.tile(xx.ravel(), len(z)), np.tile(yy.ravel(), len(z)), np.repeat(z, xx.size)])
-    normals = np.repeat([normal_vec], len(verts_), axis=0)
-    mesh = trimesh.Trimesh(vertices=verts_, vertex_normals=normals)
-    print(f"Number of slices: {np.min([len(x), len(y), len(z)])} !")
-    print(f"Number of vertices: {len(verts_)} !")
-    return mesh
-
-
 #########################
 # MESH ANALYSIS MODULES #
 #########################
@@ -759,7 +609,7 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         neigh_verts = verts[neigh_idxs]
         neigh_normals = normals[neigh_idxs]
     else:
-        print(f"[!] Unknown patch type: {patch_type}")
+        print(f"[!] Unknown patch type: {patch_mode}")
         return None
 
     if filter_boundary:
@@ -889,7 +739,7 @@ def interpolate_on_mesh(mesh, value_idxs, values, k=10, eps=1e-8):
     dists, idxs = KDTree(known_pts).query(all_pts, k=k)
     dists = dists[:, 1:]
     idxs = idxs[:, 1:]
-    dists = dists + eps
+    dists += eps
 
     weights = 1.0 / dists
     weight_sums = weights.sum(axis=1, keepdims=True)
@@ -1109,7 +959,7 @@ def draw_pca_curve(pca_center, pca_axes, dimensions=(1, 1, 1), scale=(1, 1, 1)):
     initial_curve_xpts = np.linspace(start_point_curve[0], end_point_curve[0], initial_curve_n)
     initial_curve_ypts = np.linspace(start_point_curve[1], end_point_curve[1], initial_curve_n)
     curve = np.column_stack((initial_curve_ypts, initial_curve_xpts))
-    curve = curve * scale[1:]
+    curve *= scale[1:]
     return curve
 
 
@@ -1218,26 +1068,16 @@ def cylindrical_along_curve(points, curve):
     print(f">> Performing cylindrical projection along curve for {len(points)} vertices!")
     points = np.asarray(points)
     curve = np.asarray(curve)
-
-    # Tangent along curve
     tangents = np.gradient(curve, axis=0)
     tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
-
-    # Extend endpoints for continuity
     tangents[0] = tangents[1]
     tangents[-1] = tangents[-2]
-
-    # Curvature vector dt
     dt = np.gradient(tangents, axis=0)
     dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
-
-    # Detect small dt
     small_dt_mask = dt_norm[:, 0] < 1e-12
     if np.all(small_dt_mask):
-        # Entire curve is straight → pick an arbitrary perpendicular vector
         ref = np.array([0, 0, 1])
         print(f"[!] Warning: entire curve has near-zero curvature; using arbitrary perpendicular vector {ref}!")
-        # Ensure it's not parallel to tangent
         if np.abs(np.dot(ref, tangents[0])) > 0.99:
             ref = np.array([0, 1, 0])
         dt[:] = np.cross(tangents, ref)
@@ -1245,7 +1085,6 @@ def cylindrical_along_curve(points, curve):
     else:
         print(
             f"[!] Warning: {np.sum(small_dt_mask)} point(s) along the curve have near-zero curvature; using nearest valid vector instead!")
-        # Only some points are near-zero → pick nearest valid vector
         valid_idx = np.where(~small_dt_mask)[0]
         for i in np.where(small_dt_mask)[0]:
             nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
@@ -1253,31 +1092,20 @@ def cylindrical_along_curve(points, curve):
         dt /= np.linalg.norm(dt, axis=1, keepdims=True)
     dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
     dt /= dt_norm
-
-    # Extend endpoints
     dt[0] = dt[1]
     dt[-1] = dt[-2]
-
-    # Arc length along curve
     ds = np.linalg.norm(np.diff(curve, axis=0), axis=1)
     s_curve = np.concatenate([[0], np.cumsum(ds)])
-
-    # Closest point on curve
     tree = KDTree(curve)
     _, idx = tree.query(points)
     closest = curve[idx]
     tangent = tangents[idx]
     normal = dt[idx]
-
-    # Binormal
     binormal = np.cross(tangent, normal)
-
-    # Cylindrical coordinates
     vec = points - closest
     rho = np.linalg.norm(vec, axis=1)
     phi = np.arctan2(np.sum(vec * binormal, axis=1), np.sum(vec * normal, axis=1))
     s = s_curve[idx]
-
     return s, rho, phi
 
 
@@ -1316,14 +1144,11 @@ def order_points_along_path(points, start_idx=None):
 
 
 def reparametrize_curve_by_curvature(curve, smooth=0.1):
-    # Fit spline as before
     tck, _ = splprep(curve.T, s=smooth, k=3)
     u_vals = np.linspace(0, 1, len(curve))
     curve_fit = np.array(splev(u_vals, tck)).T
-    # Compute curvature and smooth it
     tangents = np.gradient(curve_fit, axis=0)
     tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
-    # Resample according to cumulative arc length weighted by curvature
     ds = np.cumsum(np.r_[0, np.sqrt((np.diff(curve_fit, axis=0) ** 2).sum(1))])
     new_s = np.linspace(ds.min(), ds.max(), len(curve))
     curve_uniform = np.array([np.interp(new_s, ds, curve_fit[:, i]) for i in range(3)]).T
@@ -1334,11 +1159,7 @@ def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, 
                                            step_u=0.01):
     print(f">> Fitting spline of order {order_k}...")
     x, y, z = curve[::sample_interv].T
-
-    # Fit spline
     tck, u = splprep([x, y, z], s=smooth, k=order_k)
-
-    # 1. Extend forward
     u_max = 1.0
     while True:
         u_max += step_u
@@ -1346,8 +1167,6 @@ def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, 
         if not mesh.contains(pt.reshape(1, 3))[0]:
             u_max -= step_u
             break
-
-    # 2. Extend backward
     u_min = 0.0
     while True:
         u_min -= step_u
@@ -1355,8 +1174,6 @@ def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, 
         if not mesh.contains(pt.reshape(1, 3))[0]:
             u_min += step_u
             break
-
-    # 3. Evaluate curve inside mesh
     u_vals = np.linspace(u_min, u_max, num_pts)
     curve_fitted = np.array(splev(u_vals, tck)).T
     print(f"Fitted curve of length {len(curve_fitted)}!")
@@ -1366,34 +1183,22 @@ def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, 
 def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
     vertices = mesh.vertices
     centroid = vertices.mean(axis=0)
-
-    # PCA
     pca = PCA(n_components=3)
     pca.fit(vertices)
     axis = pca.components_[0]
     axis /= np.linalg.norm(axis)
-
-    # Project all vertices onto the PCA axis
-    projections = (vertices - centroid) @ axis  # scalar projection along axis
+    projections = (vertices - centroid) @ axis
     t_min = projections.min()
     t_max = projections.max()
-
-    # Dense line along axis covering entire mesh
     t_dense = np.linspace(t_min, t_max, oversample)
     dense_line = centroid[None, :] + t_dense[:, None] * axis[None, :]
-
-    # Vectorized contains check
     inside_mask = mesh.contains(dense_line)
     if not np.any(inside_mask):
         raise RuntimeError("No points along PCA axis are inside the mesh!")
-
     line_start = dense_line[np.argmax(inside_mask)]
     line_end = dense_line[np.where(inside_mask)[0][-1]]
-
-    # Interpolate final line
     t = np.linspace(0, 1, num_points)[:, None]
     line = line_start + t * (line_end - line_start)
-
     print(f"Created PCA line extended inside mesh with {len(line)} points!")
     return line
 
@@ -1401,33 +1206,22 @@ def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
 def create_s_phi_basis(points, curve, normals):
     points = np.asarray(points)
     curve = np.asarray(curve)
-
-    # --- Nearest curve point
     tree = KDTree(curve)
     _, idx = tree.query(points)
     closest = curve[idx]
-
-    # --- Radial vector
     r_vec = points - closest
     r_norm = np.linalg.norm(r_vec, axis=1, keepdims=True)
     r_norm[r_norm == 0] = 1.0
     e_rho = r_vec / r_norm
-
-    # --- e_phi (azimuthal around curve)
-    # Approximate curve tangent along centerline
     tangents = np.gradient(curve, axis=0)
     tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
     tangents[0] = tangents[1]
     tangents[-1] = tangents[-2]
     t_closest = tangents[idx]
-
     e_phi = np.cross(t_closest, e_rho)
     e_phi /= np.linalg.norm(e_phi, axis=1, keepdims=True)
-
-    # --- e_s = cross(e_phi, normals) ensures tangential to surface and follows rho
     e_s = np.cross(e_phi, normals)
     e_s /= np.linalg.norm(e_s, axis=1, keepdims=True)
-
     return e_s, e_phi, e_rho
 
 
@@ -1469,7 +1263,6 @@ def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
 # 2D ORIENTATION & NEMATIC ANALYSIS MODULES #
 #############################################
 def compute_orientation_with_intensity(img, mode, box_size, dimension=3, calc_energy_coherency=True):
-    # print(f">> Computing orientation {dimension}D with window {box_size} in mode {mode}")
     if type(box_size) is not int:
         structureTensorBoxes = op.computeGradientStructureTensorBoxes(img, box_size)
     else:
@@ -1517,8 +1310,6 @@ def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
     n_vecs = directors[:, 2:]
     n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
     q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
-
-    # --- handle nearest neighbours ---
     if isinstance(neigh_idxs, np.ndarray):
         if weights is None:
             q_avg = np.average(q[neigh_idxs], axis=1)
@@ -1579,8 +1370,6 @@ def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
 
 def tan_proj(neighbors_coords, central_normal):
     print(f">> Locally flattening coords ...")
-
-    # Detect if input is a list (variable-length neighbours)
     if isinstance(neighbors_coords, list):
         local_2d_coords_list = []
         tangent_x_list = []
@@ -1608,7 +1397,6 @@ def tan_proj(neighbors_coords, central_normal):
         return local_2d_coords_list, tangent_x_axes, tangent_y_axes
 
     else:
-        # Regular uniform array path (vectorised)
         central_coord = neighbors_coords[:, 0, :]
         cross_basis_vector = np.where(np.all(np.isclose(np.cross(central_normal, [1, 0, 0]), 0), axis=1)[:, None],
                                       [0, 1, 0],
@@ -1659,19 +1447,16 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
         theta_center = np.radians(theta_all[theta_all.shape[0] // 2, theta_all.shape[1] // 2])
         dir_vec[debug_idx] = np.cos(theta_center) * tan_x[debug_idx] + np.sin(theta_center) * tan_y[debug_idx]
         print(f"=== # {debug_idx} | theta = {np.round(np.degrees(theta_center), 2)} degrees ===")
-        # Extract the debug grid for plotting
         debug_grid_z = big_grid[0] if isinstance(big_grid, list) else big_grid
         grid_x, grid_y = np.meshgrid(
             np.linspace(0, 1, debug_grid_z.shape[0]),
             np.linspace(0, 1, debug_grid_z.shape[1]),
             indexing="ij"
         )
-        # Plot the debug grid
         plot_interp_grid(grid_x, grid_y, debug_grid_z, theta=theta_center, linelength=debug_line_length)
         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
                     remove_axes=True)
     else:
-        # Batch mode for all vertices
         theta_mid_idx = theta_all.shape[1] // 2
         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
         theta_center = np.radians(theta_all[center_indices, theta_mid_idx])
@@ -1700,7 +1485,6 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, return_
 
     q_tilde = np.array([tensprod(q[i], t_outer[i]) for i in range(N)])
 
-    # --- Handle neighbor averaging ---
     if isinstance(neigh_idxs, np.ndarray):
         q_tilde_avg = np.average(q_tilde[neigh_idxs], axis=1)
     else:
@@ -1741,7 +1525,6 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, return_
 
 
 def unique_neighborhoods(arr):
-    # ---- If arr is a list of lists, convert to list-of-sets approach ----
     if isinstance(arr, list):
         M = len(arr)
         neighborhoods = [set(neigh) for neigh in arr]
@@ -1764,7 +1547,6 @@ def unique_neighborhoods(arr):
         print(f"{len(selected)} unique out of {len(arr)}!")
         return [arr[i] for i in selected]
     else:
-        # ---- Else assume arr is an Mxk numpy array (original version) ----
         arr = np.asarray(arr)
         M, k = arr.shape
         max_index = arr.max() + 1
@@ -1825,8 +1607,6 @@ def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
 
 def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, correct_orientation=True, debug=False):
     topological_charges = []
-
-    # Ensure director_indeces is a dict for fast lookup
     index_map = {idx: i for i, idx in enumerate(director_indeces)}
 
     for patch_indices in loop_idxs:
@@ -1873,7 +1653,7 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                                                      k=patch_size,
                                                      debug=debug)
     else:
-        print(f"[!] Unknown patch type: {patch_type}")
+        print(f"[!] Unknown patch type: {patch_mode}")
         return None
     m_gauss_contribution = patch_surface_integral(mesh=mesh, value=c_gauss,
                                                   patch_idxs=charge_patch_broad,
@@ -1913,8 +1693,6 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
 
         core_idx_sel = idxs_sel[d_idx]
         core_vertex = mesh.vertices[core_idx_sel]
-
-        # --- Neighbourhood ---
         if patch_type == "radius":
             neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
                                                  custom_probes=[core_vertex],
@@ -1931,8 +1709,6 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
 
         neigh_dirs = directors_v[neigh_idxs_sel]
         neigh_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]]
-
-        # --- Tangent basis ---
         normal = vertex_normals[core_idx_sel]
         normal /= np.linalg.norm(normal)
         t1 = np.cross(normal, [1, 0, 0])
@@ -1948,14 +1724,10 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
 
         d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
         phi = np.arctan2(d_proj[:, 1], d_proj[:, 0])
-
-        # --- Headless nematic complex representation ---
         q = np.exp(1j * 2 * phi)
         base_angle = None
 
-        # --- Compute polarisation ---
         if charge > 0:  # +1/2 defect
-            # Vector sum method: direction of field asymmetry
             ex = np.cos(theta)
             ey = np.sin(theta)
             w = np.cos(2 * (phi - theta))
@@ -2071,11 +1843,9 @@ def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
     n_vecs = directors[:, 3:]
     n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
     q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 3) * np.eye(3)[np.newaxis, :, :]
-
-    # --- Handle neighbor averaging ---
     if isinstance(neigh_idxs, np.ndarray):
         q_avg = np.average(q[neigh_idxs], axis=1)
-    else:  # ragged list
+    else:
         q_avg = []
         for neigh in neigh_idxs:
             if len(neigh) == 0:
