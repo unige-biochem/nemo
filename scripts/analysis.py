@@ -7,27 +7,25 @@ Author: Konstantinos Andreadis
 # IMPORT LIBRARIES #
 ####################
 import os
+from itertools import combinations
+
 import numpy as np
-from tifffile import TiffFile
+import orientationpy as op
+import pyvista as pv
+import scipy.sparse as sp
+import trimesh
 import zarr
-from scipy.spatial import KDTree
-from skimage import measure
-from scipy.interpolate import RegularGridInterpolator, splprep, splev
+from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter, binary_fill_holes
 from scipy.optimize import least_squares
-import orientationpy as op
-import scipy.sparse as sp
+from scipy.spatial import KDTree
+from skimage import measure
 from skimage.filters import threshold_yen
-import trimesh
-from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
-from scripts.datahandler import load_array, clean_mesh
 from sklearn.neighbors import KDTree as KDTreeSklearn
-import pyvista as pv
-from sklearn.decomposition import PCA
-from skimage.morphology import medial_axis
-from itertools import combinations
-from skimage.morphology import skeletonize_3d
-import matplotlib.pyplot as plt
+from tifffile import TiffFile
+
+from scripts.datahandler import load_array, clean_mesh
+from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
 
 
 #################
@@ -67,29 +65,17 @@ def coord_search_radius(verts, r, custom_probes=None, return_dists=False, debug=
         return list(idxs)
 
 
-def rot_x(alpha):
-    return np.array([[1, 0, 0],
-                     [0, np.cos(alpha), -np.sin(alpha)],
-                     [0, np.sin(alpha), np.cos(alpha)]])
-
-
-def rot_y(beta):
-    return np.array([[np.cos(beta), 0, np.sin(beta)],
-                     [0, 1, 0],
-                     [-np.sin(beta), 0, np.cos(beta)]])
-
-
-def rot_z(gamma):
-    return np.array([[np.cos(gamma), -np.sin(gamma), 0],
-                     [np.sin(gamma), np.cos(gamma), 0],
-                     [0, 0, 1]])
-
-
 def rot3dmatrix(alpha, beta, gamma):
-    Rx = rot_x(alpha)
-    Ry = rot_y(beta)
-    Rz = rot_z(gamma)
-    return Rx @ Ry @ Rz
+    rot_x = np.array([[1, 0, 0],
+                      [0, np.cos(alpha), -np.sin(alpha)],
+                      [0, np.sin(alpha), np.cos(alpha)]])
+    rot_y = np.array([[np.cos(beta), 0, np.sin(beta)],
+                      [0, 1, 0],
+                      [-np.sin(beta), 0, np.cos(beta)]])
+    rot_z = np.array([[np.cos(gamma), -np.sin(gamma), 0],
+                      [np.sin(gamma), np.cos(gamma), 0],
+                      [0, 0, 1]])
+    return rot_x @ rot_y @ rot_z
 
 
 def otimes(a, b):
@@ -195,13 +181,6 @@ def expand_2d_array(array, num):
         return np.repeat(np.repeat(array, num[0], axis=0), num[1], axis=1)
     else:
         return np.repeat(np.repeat(array, num, axis=0), num, axis=1)
-
-
-def expand_3d_array(array, num):
-    if type(num) is not int:
-        return np.repeat(np.repeat(np.repeat(array, num[0], axis=0), num[1], axis=1), num[2], axis=2)
-    else:
-        return np.repeat(np.repeat(np.repeat(array, num, axis=0), num, axis=1), num, axis=2)
 
 
 ############################
@@ -451,36 +430,6 @@ def taubin_smooth_mesh(mesh, n_iter=100, pass_band=0.01, recalc_normals=True):
     return smooth_trimesh
 
 
-def subdivide_mesh(mesh, max_edge=8):
-    mesh = mesh.copy()
-    print(f">> Subdividing mesh using max length of {max_edge} for the edges...")
-    subdiv_mesh = mesh.subdivide_to_size(max_edge=max_edge)
-    print(f"New nr. of vertices = {len(subdiv_mesh.vertices)} !")
-    return clean_mesh(mesh=subdiv_mesh)
-
-
-def simplify_mesh(mesh, director_indices, target_face_count=20000):
-    director_faces_mask = np.any(np.isin(mesh.faces, director_indices), axis=1)
-    director_faces = mesh.faces[director_faces_mask]
-    locked_vertices = np.unique(director_faces.flatten())
-    other_faces_mask = ~director_faces_mask
-    other_mesh = mesh.submesh([other_faces_mask], append=True)
-    simplified_other_mesh = other_mesh.simplify_quadric_decimation(face_count=target_face_count)
-    combined_vertices = np.vstack((mesh.vertices[locked_vertices], simplified_other_mesh.vertices))
-    old_to_new = -np.ones(len(mesh.vertices), dtype=int)
-    old_to_new[locked_vertices] = np.arange(len(locked_vertices))
-    adjusted_locked_faces = old_to_new[director_faces]
-    simplified_faces = simplified_other_mesh.faces + len(locked_vertices)
-    combined_faces = np.vstack((adjusted_locked_faces, simplified_faces))
-    simplified_mesh = trimesh.Trimesh(vertices=combined_vertices, faces=combined_faces)
-    simplified_mesh.merge_vertices()
-    simplified_mesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(
-        vertex_count=len(simplified_mesh.vertices), faces=simplified_mesh.faces,
-        face_normals=simplified_mesh.face_normals,
-        face_angles=simplified_mesh.face_angles)
-    return simplified_mesh
-
-
 def scale_mesh(mesh, distance):
     print(f">> Scaling mesh ...")
     mesh_scaled = mesh.copy()
@@ -495,16 +444,6 @@ def scale_mesh(mesh, distance):
 ########################
 # MESH FITTING MODULES #
 ########################
-def ellipsoid_func(params, points):
-    x0, y0, z0, a, b, c, alpha, beta, gamma = params
-    shifted_points = points - np.array([x0, y0, z0])
-    rotmatrix = rot3dmatrix(alpha=alpha, beta=beta, gamma=gamma)
-    rotated_points = shifted_points @ rotmatrix.T
-    rho = (rotated_points[:, 0] / a) ** 2 + (rotated_points[:, 1] / b) ** 2 + (rotated_points[:, 2] / c) ** 2
-    residuals = (rho - 1)
-    return residuals
-
-
 def sphere_func(params, points):
     x0, y0, z0, r = params
     return np.linalg.norm(points - [x0, y0, z0], axis=1) - r
@@ -514,6 +453,16 @@ def fit_sphere(points):
     center = np.mean(points, axis=0)
     r0 = np.mean(np.linalg.norm(points - center, axis=1))
     return least_squares(sphere_func, x0=[*center, r0], args=(points,)).x
+
+
+def ellipsoid_func(params, points):
+    x0, y0, z0, a, b, c, alpha, beta, gamma = params
+    shifted_points = points - np.array([x0, y0, z0])
+    rotmatrix = rot3dmatrix(alpha=alpha, beta=beta, gamma=gamma)
+    rotated_points = shifted_points @ rotmatrix.T
+    rho = (rotated_points[:, 0] / a) ** 2 + (rotated_points[:, 1] / b) ** 2 + (rotated_points[:, 2] / c) ** 2
+    residuals = (rho - 1)
+    return residuals
 
 
 def fit_ellipsoid(points, fit_rotation=True, fixed_angles=None):
@@ -915,350 +864,6 @@ def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_
     return radial_stack, stack_coords
 
 
-def contour_masks(masks):
-    masks = masks.copy().astype(float)
-    masks[masks == 0] = np.nan
-    contours_all = []
-    for label in np.unique(masks[~np.isnan(masks)]):
-        contours = measure.find_contours(masks == label, 0.5)
-        contours_all.extend(contours)
-    return contours_all
-
-
-def find_medial_axis(img, scale=(1, 1, 1)):
-    medial_axis_raw = np.argwhere(medial_axis(img, mask=img > 0))
-    medial_axis_scaled = medial_axis_raw[:, [1, 0]] * scale[1:]
-    return medial_axis_scaled
-
-
-def spline_fit_curve(curve, order_k, num_pts, smooth, sample_interv, start_u, end_u):
-    x = curve[::sample_interv, 0]
-    y = curve[::sample_interv, 1]
-    tck = splprep([x, y], s=smooth, k=order_k)[0]
-    curve_fitted = np.array(splev(np.linspace(start_u, end_u, num_pts), tck)).T
-    return curve_fitted
-
-
-def find_pca_axes(img):
-    non_zero_indices = np.column_stack(np.where(img > 0))
-    center = np.mean(non_zero_indices, axis=0)
-    normalized_points = non_zero_indices - center
-    pca = PCA(n_components=2)
-    pca.fit(normalized_points)
-    axes = pca.components_
-    return axes, center
-
-
-def draw_pca_curve(pca_center, pca_axes, dimensions=(1, 1, 1), scale=(1, 1, 1)):
-    start_point_curve = pca_center - np.max(dimensions[1:]) / 2 * pca_axes[0]
-    end_point_curve = pca_center + np.max(dimensions[1:]) / 2 * pca_axes[0]
-    start_point_curve = start_point_curve[[1, 0]]
-    end_point_curve = end_point_curve[[1, 0]]
-    initial_curve_n = int(
-        np.max([end_point_curve[1] - start_point_curve[1], end_point_curve[0] - start_point_curve[0]]))
-    initial_curve_xpts = np.linspace(start_point_curve[0], end_point_curve[0], initial_curve_n)
-    initial_curve_ypts = np.linspace(start_point_curve[1], end_point_curve[1], initial_curve_n)
-    curve = np.column_stack((initial_curve_ypts, initial_curve_xpts))
-    curve *= scale[1:]
-    return curve
-
-
-def proj2curve(points, curve):
-    tree = KDTree(curve)
-    dists, idxs = tree.query(points)
-    closest_points = curve[idxs]
-    s_parallel = np.cumsum(np.sqrt(np.sum(np.diff(curve, axis=0) ** 2, axis=1)))
-    s_parallel = np.insert(s_parallel, 0, 0)
-    s_proj = s_parallel[idxs]
-    s_orthogonal = np.linalg.norm(points - closest_points, axis=1)
-    return s_proj, s_orthogonal
-
-
-def filter_curve_inside_shape(curve, image, thresh=0.5, scale=(1, 1)):
-    x_int = np.clip(np.round(curve[:, 0] / scale[0]).astype(int), 0, image.shape[1] - 1)
-    y_int = np.clip(np.round(curve[:, 1] / scale[1]).astype(int), 0, image.shape[0] - 1)
-    mask = image[y_int, x_int] > thresh
-    return curve[mask]
-
-
-def bin_array_with_indices(values, n_bins):
-    sorted_indices = np.argsort(values)
-    binned_indices = np.array_split(sorted_indices, n_bins)
-    return binned_indices
-
-
-def bin_indices(values, edges):
-    bin_ids = np.digitize(values, edges) - 1
-    valid = (bin_ids >= 0) & (bin_ids < len(edges) - 1)
-    binned = [[] for _ in range(len(edges) - 1)]
-    for idx, valid_flag in zip(np.arange(len(values)), valid):
-        if valid_flag:
-            binned[bin_ids[idx]].append(idx)
-    return [np.array(b, dtype=int) for b in binned]
-
-
-def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
-                  nematic_weights):
-    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens(directors=directors,
-                                                             neigh_idxs=ap_par_binned_idxs,
-                                                             weights=nematic_weights)
-    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens(directors=directors,
-                                                               neigh_idxs=ap_orth_binned_idxs,
-                                                               weights=nematic_weights)
-    ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
-                                                                     neigh_idxs=ap_par_binned_idxs,
-                                                                     weights=None)
-    ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
-                                                                       neigh_idxs=ap_orth_binned_idxs,
-                                                                       weights=None)
-
-    nematic_results = (ap_par_binned_S_2d, ap_par_binned_n_2d,
-                       ap_orth_binned_S_2d, ap_orth_binned_n_2d)
-    nematic_results_unweighted = (ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw,
-                                  ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw)
-    ap_par_binned_dirs = []
-    ap_orth_binned_dirs = []
-    s_par_orthogonality = []
-    s_orth_orthogonality = []
-    s_par_orthogonality_unw = []
-    s_orth_orthogonality_unw = []
-
-    curve_tangents = np.diff(curve, axis=0)
-    curve_tangents /= np.linalg.norm(curve_tangents, axis=1, keepdims=True)
-    curve_pt_tree = KDTree(curve[:-1])
-
-    for i_, parallel_bin_idxs in enumerate(ap_par_binned_idxs):
-        ap_par_binned_dirs.append(directors[parallel_bin_idxs])
-        _, indices = curve_pt_tree.query(directors[:, :2][parallel_bin_idxs])
-        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
-        local_normals = np.mean(local_normals, axis=0)
-        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
-        s_par_orthogonality.append(np.abs(np.dot(ap_par_binned_n_2d[i_], local_normals)))
-        s_par_orthogonality_unw.append(np.abs(np.dot(ap_par_binned_n_2d_unw[i_], local_normals)))
-
-    for i_, orthogonal_bin_idxs in enumerate(ap_orth_binned_idxs):
-        ap_orth_binned_dirs.append(directors[orthogonal_bin_idxs])
-        _, indices = curve_pt_tree.query(directors[:, :2][orthogonal_bin_idxs])
-        local_normals = np.stack((-curve_tangents[indices][:, 1], curve_tangents[indices][:, 0]), axis=-1)
-        local_normals = np.mean(local_normals, axis=0)
-        local_normals = local_normals / np.linalg.norm(local_normals, keepdims=True)
-        s_orth_orthogonality.append(np.abs(np.dot(ap_orth_binned_n_2d[i_], local_normals)))
-        s_orth_orthogonality_unw.append(np.abs(np.dot(ap_orth_binned_n_2d_unw[i_], local_normals)))
-    s_par_orthogonality = np.array(s_par_orthogonality)
-    s_orth_orthogonality = np.array(s_orth_orthogonality)
-    s_par_orthogonality_unw = np.array(s_par_orthogonality_unw)
-    s_orth_orthogonality_unw = np.array(s_orth_orthogonality_unw)
-    parallel_results = ap_par_binned_dirs, s_par_orthogonality, s_par_orthogonality_unw
-    orthogonal_results = ap_orth_binned_dirs, s_orth_orthogonality, s_orth_orthogonality_unw
-    return parallel_results, orthogonal_results, nematic_results, nematic_results_unweighted
-
-
-def find_phi_intensity_max(phi_vals, intensity_vals):
-    phi_vals_sorted = np.sort(phi_vals)
-    dphi = np.diff(np.r_[phi_vals_sorted, phi_vals_sorted[0] + 2 * np.pi])
-    adaptive_w = intensity_vals * np.interp(phi_vals, phi_vals_sorted, dphi)
-    return np.angle(np.sum(adaptive_w * np.exp(1j * phi_vals)) / np.sum(adaptive_w))
-
-
-def shift_angle_periodic(angle, angle_zerobase):
-    return np.angle(np.exp(1j * (angle - angle_zerobase)))
-
-
-def cylindrical_along_curve(points, curve):
-    print(f">> Performing cylindrical projection along curve for {len(points)} vertices!")
-    points = np.asarray(points)
-    curve = np.asarray(curve)
-    tangents = np.gradient(curve, axis=0)
-    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
-    tangents[0] = tangents[1]
-    tangents[-1] = tangents[-2]
-    dt = np.gradient(tangents, axis=0)
-    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
-    small_dt_mask = dt_norm[:, 0] < 1e-12
-    if np.all(small_dt_mask):
-        ref = np.array([0, 0, 1])
-        print(f"[!] Warning: entire curve has near-zero curvature; using arbitrary perpendicular vector {ref}!")
-        if np.abs(np.dot(ref, tangents[0])) > 0.99:
-            ref = np.array([0, 1, 0])
-        dt[:] = np.cross(tangents, ref)
-        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
-    else:
-        print(
-            f"[!] Warning: {np.sum(small_dt_mask)} point(s) along the curve have near-zero curvature; using nearest valid vector instead!")
-        valid_idx = np.where(~small_dt_mask)[0]
-        for i in np.where(small_dt_mask)[0]:
-            nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
-            dt[i] = dt[nearest]
-        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
-    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
-    dt /= dt_norm
-    dt[0] = dt[1]
-    dt[-1] = dt[-2]
-    ds = np.linalg.norm(np.diff(curve, axis=0), axis=1)
-    s_curve = np.concatenate([[0], np.cumsum(ds)])
-    tree = KDTree(curve)
-    _, idx = tree.query(points)
-    closest = curve[idx]
-    tangent = tangents[idx]
-    normal = dt[idx]
-    binormal = np.cross(tangent, normal)
-    vec = points - closest
-    rho = np.linalg.norm(vec, axis=1)
-    phi = np.arctan2(np.sum(vec * binormal, axis=1), np.sum(vec * normal, axis=1))
-    s = s_curve[idx]
-    return s, rho, phi
-
-
-def skeletonise_mesh(mesh, voxel_size):
-    voxelized = trimesh.voxel.creation.voxelize(mesh, pitch=voxel_size)
-    voxelized_grid = voxelized.matrix.astype(np.uint8)
-    voxelized_grid = binary_fill_holes(voxelized_grid)
-    skel = skeletonize_3d(voxelized_grid)
-    skel_coords = np.ceil(np.argwhere(skel > 0) * voxelized.pitch + voxelized.translation).astype(int)
-    print(f"Found {len(skel_coords)} skeleton points!")
-    return skel_coords
-
-
-def order_points_along_path(points, start_idx=None):
-    points = np.asarray(points)
-    tree = KDTree(points)
-    N = len(points)
-    ordered = np.zeros(N, dtype=int)
-    used = np.zeros(N, dtype=bool)
-
-    if start_idx is None:
-        start_idx = np.unravel_index(np.argmin(points), points.shape)[0]
-
-    ordered[0] = start_idx
-    used[start_idx] = True
-    curr = start_idx
-
-    for i in range(1, N):
-        _, idx = tree.query(points[curr], k=N)
-        next_idx = next(j for j in idx if not used[j])
-        ordered[i] = next_idx
-        used[next_idx] = True
-        curr = next_idx
-
-    return points[ordered]
-
-
-def reparametrize_curve_by_curvature(curve, smooth=0.1):
-    tck, _ = splprep(curve.T, s=smooth, k=3)
-    u_vals = np.linspace(0, 1, len(curve))
-    curve_fit = np.array(splev(u_vals, tck)).T
-    tangents = np.gradient(curve_fit, axis=0)
-    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
-    ds = np.cumsum(np.r_[0, np.sqrt((np.diff(curve_fit, axis=0) ** 2).sum(1))])
-    new_s = np.linspace(ds.min(), ds.max(), len(curve))
-    curve_uniform = np.array([np.interp(new_s, ds, curve_fit[:, i]) for i in range(3)]).T
-    return curve_uniform
-
-
-def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, smooth=100, sample_interv=3,
-                                           step_u=0.01):
-    print(f">> Fitting spline of order {order_k}...")
-    x, y, z = curve[::sample_interv].T
-    tck, u = splprep([x, y, z], s=smooth, k=order_k)
-    u_max = 1.0
-    while True:
-        u_max += step_u
-        pt = np.array(splev(u_max, tck))
-        if not mesh.contains(pt.reshape(1, 3))[0]:
-            u_max -= step_u
-            break
-    u_min = 0.0
-    while True:
-        u_min -= step_u
-        pt = np.array(splev(u_min, tck))
-        if not mesh.contains(pt.reshape(1, 3))[0]:
-            u_min += step_u
-            break
-    u_vals = np.linspace(u_min, u_max, num_pts)
-    curve_fitted = np.array(splev(u_vals, tck)).T
-    print(f"Fitted curve of length {len(curve_fitted)}!")
-    return curve_fitted
-
-
-def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
-    vertices = mesh.vertices
-    centroid = vertices.mean(axis=0)
-    pca = PCA(n_components=3)
-    pca.fit(vertices)
-    axis = pca.components_[0]
-    axis /= np.linalg.norm(axis)
-    projections = (vertices - centroid) @ axis
-    t_min = projections.min()
-    t_max = projections.max()
-    t_dense = np.linspace(t_min, t_max, oversample)
-    dense_line = centroid[None, :] + t_dense[:, None] * axis[None, :]
-    inside_mask = mesh.contains(dense_line)
-    if not np.any(inside_mask):
-        raise RuntimeError("No points along PCA axis are inside the mesh!")
-    line_start = dense_line[np.argmax(inside_mask)]
-    line_end = dense_line[np.where(inside_mask)[0][-1]]
-    t = np.linspace(0, 1, num_points)[:, None]
-    line = line_start + t * (line_end - line_start)
-    print(f"Created PCA line extended inside mesh with {len(line)} points!")
-    return line
-
-
-def create_s_phi_basis(points, curve, normals):
-    points = np.asarray(points)
-    curve = np.asarray(curve)
-    tree = KDTree(curve)
-    _, idx = tree.query(points)
-    closest = curve[idx]
-    r_vec = points - closest
-    r_norm = np.linalg.norm(r_vec, axis=1, keepdims=True)
-    r_norm[r_norm == 0] = 1.0
-    e_rho = r_vec / r_norm
-    tangents = np.gradient(curve, axis=0)
-    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
-    tangents[0] = tangents[1]
-    tangents[-1] = tangents[-2]
-    t_closest = tangents[idx]
-    e_phi = np.cross(t_closest, e_rho)
-    e_phi /= np.linalg.norm(e_phi, axis=1, keepdims=True)
-    e_s = np.cross(e_phi, normals)
-    e_s /= np.linalg.norm(e_s, axis=1, keepdims=True)
-    return e_s, e_phi, e_rho
-
-
-def decompose_q_sphi(q_sphi, s_coords, num_bins=50):
-    Q_ss = q_sphi[:, 0, 0]
-    Q_phiphi = q_sphi[:, 1, 1]
-    Q_sphi = q_sphi[:, 0, 1]
-    s_bins = np.linspace(s_coords.min(), s_coords.max(), num_bins)
-    s_bin_centers = 0.5 * (s_bins[:-1] + s_bins[1:])
-    Q_ss_mean = np.zeros(num_bins - 1)
-    Q_phiphi_mean = np.zeros(num_bins - 1)
-    Q_sphi_mean = np.zeros(num_bins - 1)
-
-    for i in range(num_bins - 1):
-        mask = (s_coords >= s_bins[i]) & (s_coords < s_bins[i + 1])
-        if mask.any():
-            Q_ss_mean[i] = Q_ss[mask].mean()
-            Q_phiphi_mean[i] = Q_phiphi[mask].mean()
-            Q_sphi_mean[i] = Q_sphi[mask].mean()
-    return s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean
-
-
-def planarise_curve(curve):
-    points_centered = curve - curve.mean(axis=0)
-    _, _, vh = np.linalg.svd(points_centered)
-    normal = vh[-1]
-    curve_planar = curve - np.outer(points_centered @ normal, normal)
-    distances = np.abs((curve_planar - curve_planar.mean(axis=0)) @ normal)
-    print("Max deviation after projection:", distances.max())
-    return curve_planar
-
-
-def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
-    keep_mask = (angles > angle_low_cutoff) & (angles < angle_high_cutoff)
-    return values[keep_mask]
-
-
 #############################################
 # 2D ORIENTATION & NEMATIC ANALYSIS MODULES #
 #############################################
@@ -1302,66 +907,6 @@ def compute_2d_orientation(mode, img, sampling_box_size, onlytheta=False, debug=
         if debug:
             print(f"Total of {len(vectors)} orientation vectors !")
         return theta, energy, coherency, vectors
-
-
-def avg_2d_nem_tens(directors, neigh_idxs, debug=False, weights=None):
-    if debug:
-        print("Averaging 2D nematic tensor...")
-    n_vecs = directors[:, 2:]
-    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
-    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 2) * np.eye(2)[np.newaxis, :, :]
-    if isinstance(neigh_idxs, np.ndarray):
-        if weights is None:
-            q_avg = np.average(q[neigh_idxs], axis=1)
-        else:
-            w = weights[neigh_idxs][..., np.newaxis, np.newaxis]
-            q_avg = np.average(q[neigh_idxs] * w, axis=1)
-    else:
-        q_avg = []
-        for neigh in neigh_idxs:
-            if len(neigh) <= 1:
-                q_avg.append(np.full(fill_value=np.nan, shape=(2, 2)))
-            else:
-                if weights is None:
-                    q_avg.append(np.mean(q[neigh], axis=0))
-                else:
-                    w = weights[neigh][..., np.newaxis, np.newaxis]
-                    q_avg.append(np.average(q[neigh] * w, axis=0))
-        q_avg = np.stack(q_avg)
-    eigvals, eigvecs = np.linalg.eigh(q_avg)
-    max_indeces = np.argmax(eigvals, axis=1)
-    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-    n_avg = max_eigvecs
-    S_order = max_eigvals * 2
-    if debug:
-        print(f"director components = \n {n_vecs}")
-        print(f"q with shape {q.shape} = \n {q}")
-        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
-        print(f"S_order with shape {S_order.shape} = \n {S_order}")
-        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg
-
-
-def orient2d(img, boxsize, thresh_val, num_neigh_nem=3 ** 2, debug=True):
-    if debug:
-        print(
-            f">> Performing 2D Orientation Analysis for window {boxsize}x{boxsize}, mask threshold {thresh_val} and num_neigh_nem {num_neigh_nem}...")
-    img = img.copy().astype(np.float64)
-    theta_all_deg = -compute_2d_orientation(mode="fiber", img=img, sampling_box_size=boxsize, onlytheta=True,
-                                            debug=debug)
-    theta_all_deg = expand_2d_array(theta_all_deg, num=boxsize)
-    keepmask = img > thresh_val
-    X, Y = np.meshgrid(np.arange(img.shape[0]), np.arange(img.shape[1]))
-    X, Y = X[keepmask.T], Y[keepmask.T]
-    theta_all_deg[~keepmask] = None
-    theta_masked_rad = np.radians(theta_all_deg[keepmask])
-    directors_2d = np.column_stack(
-        (X, Y, np.cos(theta_masked_rad), np.sin(theta_masked_rad)))
-    neigh_idxs = coord_search_neighbours(directors_2d[:, :2], k=num_neigh_nem, debug=debug)
-    S_2d, n_2d = avg_2d_nem_tens(directors=directors_2d, neigh_idxs=neigh_idxs, debug=debug)
-    return theta_all_deg, theta_masked_rad, S_2d, n_2d, X, Y, directors_2d
 
 
 ##############################################
@@ -1677,104 +1222,6 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
         return m_charge, calc_charge_loop_idxs, m_line_charge, m_gauss_contribution
 
 
-def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
-                                 defect_idxs_calc, m_charge,
-                                 patch_type, patch_size,
-                                 show_profile=False):
-    pol_vec_2d = None
-    pol_positions, pol_vectors, pol_idxs = [], [], []
-
-    directors_v = directors[:, 3:6]
-    directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
-
-    for d_idx, charge in zip(defect_idxs_calc, m_charge):
-        if not (0.4 < abs(charge) < 0.6):
-            continue
-
-        core_idx_sel = idxs_sel[d_idx]
-        core_vertex = mesh.vertices[core_idx_sel]
-        if patch_type == "radius":
-            neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
-                                                 custom_probes=[core_vertex],
-                                                 r=patch_size)[0]
-        elif patch_type == "nearest":
-            neigh_idxs_sel = coord_search_neighbours(mesh.vertices[idxs_sel],
-                                                     custom_probes=[core_vertex],
-                                                     k=patch_size)[0]
-        else:
-            raise ValueError(f"Unknown patch type: {patch_type}")
-
-        if len(neigh_idxs_sel) < 10:
-            continue
-
-        neigh_dirs = directors_v[neigh_idxs_sel]
-        neigh_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]]
-        normal = vertex_normals[core_idx_sel]
-        normal /= np.linalg.norm(normal)
-        t1 = np.cross(normal, [1, 0, 0])
-        if np.linalg.norm(t1) < 1e-6:
-            t1 = np.cross(normal, [0, 1, 0])
-        t1 /= np.linalg.norm(t1)
-        t2 = np.cross(normal, t1)
-
-        rel_pos = neigh_pos - core_vertex
-        x = rel_pos @ t1
-        y = rel_pos @ t2
-        theta = np.arctan2(y, x)
-
-        d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
-        phi = np.arctan2(d_proj[:, 1], d_proj[:, 0])
-        q = np.exp(1j * 2 * phi)
-        base_angle = None
-
-        if charge > 0:  # +1/2 defect
-            ex = np.cos(theta)
-            ey = np.sin(theta)
-            w = np.cos(2 * (phi - theta))
-            pol_vec_2d = np.array([np.sum(w * ex), np.sum(w * ey)])
-            pol_vec_2d /= np.linalg.norm(pol_vec_2d) + 1e-12
-            pol = pol_vec_2d[0] * t1 + pol_vec_2d[1] * t2
-            pol_positions.append(core_vertex)
-            pol_vectors.append(pol)
-            pol_idxs.append(d_idx)
-        else:  # -1/2 defect (threefold symmetric)
-            base_angle = 2 / 3 * np.angle(np.sum(q))
-            for k in range(3):
-                angle = base_angle + k * 2 * np.pi / 3
-                pol = np.cos(angle) * t1 + np.sin(angle) * t2
-                pol_positions.append(core_vertex)
-                pol_vectors.append(pol)
-                pol_idxs.append(d_idx)
-        if show_profile:
-            fig, ax = plt.subplots(figsize=(5, 5))
-            ax.set_aspect('equal')
-            ax.set_title(f"Defect {d_idx}, charge {charge:.2f}")
-
-            scale = 0.15 * patch_size
-            ax.quiver(x, y,
-                      np.cos(phi) * scale, np.sin(phi) * scale,
-                      color='blue', alpha=0.5, label='Directors')
-            if charge > 0:
-                ax.quiver(0, 0,
-                          pol_vec_2d[0] * scale * 3,
-                          pol_vec_2d[1] * scale * 3,
-                          color='red', width=0.02, label='Polarisation')
-            else:
-                for k in range(3):
-                    angle = base_angle + k * 2 * np.pi / 3
-                    ax.quiver(0, 0,
-                              np.cos(angle) * scale * 3,
-                              np.sin(angle) * scale * 3,
-                              color='red', width=0.02)
-
-            ax.scatter(0, 0, color='k', s=50, marker='x', label='Core')
-            ax.legend()
-            plt.show()
-
-    print(f"Found {len(pol_positions)} polarisation vectors!")
-    return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)
-
-
 def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
                       director_name_prefix="directors-avg_2dcurved_"):
     print(f"Loading layer 1 {layer_name_1}...")
@@ -1814,57 +1261,3 @@ def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, 
                                                                     neigh_idxs=joint_neigh_idxs)
     crisscross_mag = 1 - S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)]
     return crisscross_mag, directors_2dcurved_avg_1, directors_2dcurved_avg_2
-
-
-#############################################
-# 3D ORIENTATION & NEMATIC ANALYSIS MODULES #
-#############################################
-def compute_3d_orientation(mode, img, sampling_box_size, onlydirec=True, upscale_vec=False):
-    if onlydirec:
-        sampled_orientation = compute_orientation_with_intensity(img=img, mode=mode, box_size=sampling_box_size,
-                                                                 dimension=3, calc_energy_coherency=False)
-        if upscale_vec:
-            return expand_3d_array(sampled_orientation["vector"], num=sampling_box_size)
-        else:
-            return sampled_orientation["vector"]
-    else:
-        sampled_orientation = compute_orientation_with_intensity(img=img, mode=mode, box_size=sampling_box_size,
-                                                                 dimension=3)
-        theta = expand_3d_array(array=sampled_orientation["theta"], num=sampling_box_size)
-        phi = expand_3d_array(array=sampled_orientation["phi"], num=sampling_box_size)
-        energy = expand_3d_array(array=sampled_orientation["energy"], num=sampling_box_size)
-        coherency = expand_3d_array(array=sampled_orientation["coherency"], num=sampling_box_size)
-        vectors = expand_3d_array(sampled_orientation["vector"], num=sampling_box_size)
-        return theta, phi, energy, coherency, vectors
-
-
-def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
-    print("Averaging full 3D nematic tensor...")
-    n_vecs = directors[:, 3:]
-    n_vecs = n_vecs / np.linalg.norm(n_vecs, axis=1, keepdims=True)
-    q = n_vecs[:, :, np.newaxis] * n_vecs[:, np.newaxis, :] - (1 / 3) * np.eye(3)[np.newaxis, :, :]
-    if isinstance(neigh_idxs, np.ndarray):
-        q_avg = np.average(q[neigh_idxs], axis=1)
-    else:
-        q_avg = []
-        for neigh in neigh_idxs:
-            if len(neigh) == 0:
-                q_avg.append(np.zeros((3, 3)))
-            else:
-                q_avg.append(np.mean(q[neigh], axis=0))
-        q_avg = np.stack(q_avg)
-
-    eigvals, eigvecs = np.linalg.eigh(q_avg)
-    max_indeces = np.argmax(eigvals, axis=1)
-    max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
-    max_eigvecs = eigvecs[np.arange(len(max_indeces)), :, max_indeces]
-    max_eigvecs = max_eigvecs / np.linalg.norm(max_eigvecs, axis=1, keepdims=True)
-    n_avg = max_eigvecs
-    S_order = max_eigvals * (3 / 2)
-    if debug:
-        print(f"director components = \n {n_vecs}")
-        print(f"q with shape {q.shape} = \n {q}")
-        print(f"q_avg with shape {q_avg.shape} = \n {q_avg}")
-        print(f"S_order with shape {S_order.shape} = \n {S_order}")
-        print(f"n_avg with shape {n_avg.shape} = \n {n_avg}")
-    return S_order, n_avg

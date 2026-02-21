@@ -6,21 +6,23 @@ Author: Konstantinos Andreadis
 ####################
 # IMPORT LIBRARIES #
 ####################
-import numpy as np
+
 import os.path
 import shutil
-import matplotlib.pyplot as plt
-import napari
-from matplotlib.colors import ListedColormap, Normalize, BoundaryNorm
-from matplotlib import colormaps
+
 import imageio
-from matplotlib import colors as pltcolors
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.cm as cm
 import matplotlib.gridspec as gridspec
-from scipy.interpolate import griddata
-import seaborn as sns
+import matplotlib.pyplot as plt
+import napari
+import numpy as np
 import pandas as pd
+import seaborn as sns
+from matplotlib import colormaps
+from matplotlib import colors as pltcolors
+from matplotlib.colors import ListedColormap, Normalize, BoundaryNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.interpolate import griddata
 
 #############################################
 # [!!!] Dark/Light Mode for all Plots [!!!] #
@@ -99,8 +101,9 @@ def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
 #######################
 
 def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 3), slice_line_alpha=0.8,
-             cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None,
+             cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None, mesh_normal_alpha=0.8,
              slice_depth=10, mesh_thick=0.1, mesh_alpha=0.3, thresh_alpha=0.8, mesh_colors=None,
+             show_mesh_normals=False, normal_scale=0.03, normal_vecfreq=20,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
              manual_vminvmax=None, savefig="", hidefig=False):
     print(">> Plotting slices...")
@@ -160,12 +163,40 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 3), sl
             zmask = abs(pts_z - z_i * scale[0]) < slice_depth
             ymask = abs(pts_y - y_i * scale[1]) < slice_depth
             xmask = abs(pts_x - x_i * scale[2]) < slice_depth
+
             axes[0].scatter(pts_x[zmask] / scale[2], pts_y[zmask] / scale[1], c=mesh_colors[i], s=mesh_thick,
                             alpha=mesh_alpha)
             axes[1].scatter(pts_x[ymask] / scale[2], pts_z[ymask] / scale[0], c=mesh_colors[i], s=mesh_thick,
                             alpha=mesh_alpha)
             axes[2].scatter(pts_y[xmask] / scale[1], pts_z[xmask] / scale[0], c=mesh_colors[i], s=mesh_thick,
                             alpha=mesh_alpha)
+            if show_mesh_normals:
+                norms = mesh.vertex_normals.copy()
+                norms_z, norms_y, norms_x = norms[:, 0], norms[:, 1], norms[:, 2]
+
+                # Z-Slice
+                axes[0].quiver((pts_x[zmask] / scale[2])[::normal_vecfreq],
+                               (pts_y[zmask] / scale[1])[::normal_vecfreq],
+                               (norms_x[zmask] / scale[2])[::normal_vecfreq],
+                               (norms_y[zmask] / scale[1])[::normal_vecfreq],
+                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
+                               angles='xy', scale_units='xy')
+
+                # Y-Slice
+                axes[1].quiver((pts_x[ymask] / scale[2])[::normal_vecfreq],
+                               (pts_z[ymask] / scale[0])[::normal_vecfreq],
+                               (norms_x[ymask] / scale[2])[::normal_vecfreq],
+                               (norms_z[ymask] / scale[0])[::normal_vecfreq],
+                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
+                               angles='xy', scale_units='xy')
+
+                # X-Slice
+                axes[2].quiver((pts_y[xmask] / scale[1])[::normal_vecfreq],
+                               (pts_z[xmask] / scale[0])[::normal_vecfreq],
+                               (norms_y[xmask] / scale[1])[::normal_vecfreq],
+                               (norms_z[xmask] / scale[0])[::normal_vecfreq],
+                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
+                               angles='xy', scale_units='xy')
 
     if not max_proj:
         axes[0].axhline(y=y_i, linestyle="--", alpha=slice_line_alpha)
@@ -280,7 +311,11 @@ def plot_scatter(x, y, xlabel, ylabel, title, vert_line=None, xlim=None, ylim=No
     plt.title(title)
     plt.scatter(x, y)
     if vert_line is not None:
-        plt.axvline(x=vert_line, linestyle="--", color="k")
+        if type(vert_line) != list:
+            plt.axvline(x=vert_line, linestyle="--", color="k")
+        else:
+            for vline in vert_line:
+                plt.axvline(x=vline, linestyle="--", color="k")
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     if xlim is not None:

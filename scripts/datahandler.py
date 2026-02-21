@@ -6,13 +6,14 @@ Author: Konstantinos Andreadis
 ####################
 # IMPORT LIBRARIES #
 ####################
-import pandas as pd
-import os, re
+import os
+import re
+
+import imageio.v2 as imageio
 import numpy as np
+import pandas as pd
 import tifffile
 import trimesh
-from PIL import Image
-import imageio.v2 as imageio
 
 
 #####################
@@ -48,9 +49,6 @@ def save_array(array, name, header, folderpath, delimiter=","):
 #####################
 # IMAGE I/O MODULES #
 #####################
-def load_tiff(filepath):
-    print(f">> Loading tif {filepath}...")
-    return tifffile.imread(filepath)
 
 
 def save_tiff(array, filepath):
@@ -58,18 +56,6 @@ def save_tiff(array, filepath):
     create_dir(os.path.dirname(filepath))
     tifffile.imwrite(filepath, array.astype(np.float32))
 
-
-def load_png(filepath):
-    if not os.path.exists(filepath):
-        print(f"{filepath} does not exist, exiting...")
-        return None
-    else:
-        return np.array(Image.open(filepath))
-
-
-#####################
-# IMAGE I/O MODULES #
-#####################
 
 def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
     files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
