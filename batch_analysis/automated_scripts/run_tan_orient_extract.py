@@ -6,7 +6,8 @@ Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
 # Import NEMO scripts
-import os, sys
+import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from scripts import analysis, datahandler, visuals
@@ -29,18 +30,9 @@ def parse_args():
     parser.add_argument("--normal_validity_thresh", type=float, default=0.99,
                         help="Threshold for normal vector validity")
 
-    parser.add_argument("--intensity_lower_ratio", type=float, default=0.0,
-                        help="Lower intensity ratio threshold for filtering")
-    parser.add_argument("--intensity_upper_ratio", type=float, default=1.0,
-                        help="Upper intensity ratio threshold for filtering")
+    parser.add_argument("--compute_num", type=int, default=3000,
+                        help="Number of directors")
 
-    parser.add_argument("--compute_interval", type=int, default=70,
-                        help="Interval for computation steps")
-
-    parser.add_argument("--boundary_exclusion_factor", type=float, default=0.1,
-                        help="Fraction of boundary excluded from analysis")
-    parser.add_argument("--cutoff_intensity_variance", type=float, default=0.0,
-                        help="Cutoff for intensity variance filtering")
     parser.add_argument("--grid_n_2dcurve_analysis", type=int, default=30,
                         help="Grid resolution for 2D curved analysis")
     parser.add_argument("--debug_2dcurve_analysis", action=argparse.BooleanOptionalAction,
@@ -49,24 +41,17 @@ def parse_args():
     parser.add_argument("--patch_mode", type=str, default="radius", choices=["radius", "nearest"],
                         help="Averaging mode")
     parser.add_argument("--patch_size", type=float, default=20.0, help="Averaging size")
-    args = parser.parse_args()
-    return args
+    parser.add_argument("--show_plots", default=False, action="store_true", help="Show plots")
+    return parser.parse_args()
 
 
 def main(img_path, layer_label, render, patch_mode, patch_size, normal_validity_k,
-         normal_validity_thresh,
-         intensity_lower_ratio,
-         intensity_upper_ratio,
-         compute_interval,
-         boundary_exclusion_factor,
-         cutoff_intensity_variance,
-         grid_n_2dcurve_analysis,
-         debug_2dcurve_analysis, ):
+         normal_validity_thresh, compute_num, grid_n_2dcurve_analysis, debug_2dcurve_analysis, show_figures):
     print(f">> Attempting to analysing projected layer {layer_label} image {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
         return None
-
+    hidefig = not show_figures
     # ==== Choose Image ====
     print(f"Selected image path: {img_path}")
     # ==== Choose Time Step and Channel ====
@@ -100,21 +85,18 @@ def main(img_path, layer_label, render, patch_mode, patch_size, normal_validity_
     layer_mesh = datahandler.load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"), recalc_normals=False,
                                        clean=False)
 
-    # ==== Pres-Select Vertices for 2D+ Orientation Analysis ====
+    # ==== Preselect Vertices for 2D+ Orientation Analysis ====
     idxs_sel = np.arange(layer_mesh.vertices.shape[0])
     idxs_sel = analysis.filter_normal_validity(mesh=layer_mesh, idxs_sel=idxs_sel, k=normal_validity_k,
                                                threshold=normal_validity_thresh)
 
-    # ==== Filter by Intensity Value ====
-    cutoff_min_intensity = intensity_lower_ratio * np.max(proj_layer)
-    cutoff_max_intensity = intensity_upper_ratio * np.max(proj_layer)
-    idxs_sel = idxs_sel[(proj_layer[idxs_sel] > cutoff_min_intensity) & (proj_layer[idxs_sel] < cutoff_max_intensity)]
-
     # ==== Compute only points at Interval ====
-    idxs_sel = np.random.choice(idxs_sel, size=int(len(layer_mesh.vertices) / compute_interval))
+    idxs_sel = np.random.choice(idxs_sel, size=int(compute_num))
     if len(idxs_sel) == 0:
         print("!! ERROR: No vertices were selected for analysis !!")
         return None
+    else:
+        print(f">> Selected initially {len(idxs_sel)} for analysis !")
 
     # ==== Tune Plotting parameters ====
     if patch_mode == "radius":
@@ -128,27 +110,6 @@ def main(img_path, layer_label, render, patch_mode, patch_size, normal_validity_
     else:
         print(f"[!] Unknown patch type: {patch_mode}")
         return None
-
-    # ==== Filter Valid Surface Patches ====
-    idxs_neigh, valid_patch_idxs = analysis.filter_valid_patches(verts=layer_mesh.vertices, idxs_neigh=idxs_neigh,
-                                                                 factor=boundary_exclusion_factor)
-    if len(valid_patch_idxs) == 0:
-        print("!! ERROR: No vertices remain valid for analysis !!")
-        return None
-
-    idxs_sel = idxs_sel[valid_patch_idxs]
-
-    # ==== Filter by Intensity Variation ====
-    proj_layer_variance = np.array([np.var(proj_layer[patch_idxs]) for patch_idxs in idxs_neigh])
-    visuals.plot_hist(proj_layer_variance, title="Intensity Variance per Patch", hidefig=True)
-
-    filter_intens_var_mask = proj_layer_variance > cutoff_intensity_variance
-
-    # Filter idxs_sel
-    idxs_sel = idxs_sel[filter_intens_var_mask]
-
-    # Filter idxs_neigh (keep only the patches that passed)
-    idxs_neigh = [patch for i, patch in enumerate(idxs_neigh) if filter_intens_var_mask[i]]
 
     # ==== Find Nearest Intensities ====
     proj_layer_neigh = [proj_layer[patch_idxs] for patch_idxs in idxs_neigh]
@@ -207,7 +168,7 @@ def main(img_path, layer_label, render, patch_mode, patch_size, normal_validity_
         # ==== Plot Directors ====
         visuals.plot_dir_field(directors=directors_2dcurved, title=title_render,
                                savefig=os.path.join(resfig_dir_layer, "directors_2dcurved.png"), veclength=10,
-                               hidefig=True)
+                               hidefig=hidefig)
     else:
         print(f"This was a debug run, not saving results...")
         return None
@@ -227,7 +188,7 @@ def main(img_path, layer_label, render, patch_mode, patch_size, normal_validity_
         hexgridsize=400,
         scale_factor=5,
         cmap="Greens",
-        arrow_alpha=0.7, figsize=(13, 10), hidefig=True,
+        arrow_alpha=0.7, figsize=(13, 10), hidefig=hidefig,
         savefig=os.path.join(resfig_dir_layer, "spherical_projection_extracted-directors.png")
     )
     if render:
@@ -258,11 +219,8 @@ if __name__ == "__main__":
     main(img_path=args.img_path, layer_label=args.layer_label, render=args.render,
          normal_validity_k=args.normal_validity_k,
          normal_validity_thresh=args.normal_validity_thresh,
-         intensity_lower_ratio=args.intensity_lower_ratio,
-         intensity_upper_ratio=args.intensity_upper_ratio,
-         compute_interval=args.compute_interval,
-         boundary_exclusion_factor=args.boundary_exclusion_factor,
-         cutoff_intensity_variance=args.cutoff_intensity_variance,
+         compute_num=args.compute_num,
          grid_n_2dcurve_analysis=args.grid_n_2dcurve_analysis,
-         debug_2dcurve_analysis=args.debug_2dcurve_analysis, patch_mode=args.patch_mode, patch_size=args.patch_size)
+         debug_2dcurve_analysis=args.debug_2dcurve_analysis, patch_mode=args.patch_mode, patch_size=args.patch_size,
+         show_figures=args.show_figures, )
     print("======== END NEMO ========")

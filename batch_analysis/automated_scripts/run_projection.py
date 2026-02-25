@@ -6,7 +6,8 @@ Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
 # Import NEMO scripts
-import os, sys
+import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from scripts import analysis, datahandler, visuals
@@ -22,17 +23,18 @@ def parse_args():
     parser.add_argument("--dist_max", required=True, type=float, help="Maximum distance to end projection")
     parser.add_argument("--dist_num", default=30, type=int, help="Number projection points")
     parser.add_argument("--proj_mode", default="max", choices=["max", "mean"], help="Projection mode (max/mean)")
-    parser.add_argument("--render", action=argparse.BooleanOptionalAction, help="Render in 3D")
-    args = parser.parse_args()
-    return args
+    parser.add_argument("--flip_normals", default=False, action="store_true", help="Flip normals")
+    parser.add_argument("--render", default=False, action="store_true", help="Render in 3D")
+    parser.add_argument("--show_plots", default=False, action="store_true", help="Show plots")
+    return parser.parse_args()
 
 
-def main(img_path, dist_min, dist_max, dist_num, proj_mode, render):
+def main(img_path, dist_min, dist_max, dist_num, proj_mode, render, flip_normals, show_plots):
     print(f">> Attempting to project image {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
         return None
-
+    hidefig = not show_plots
     # ==== Choose Image ====
     print(f"Selected image path: {img_path}")
     # ==== Choose Time Step and Channel ====
@@ -59,8 +61,11 @@ def main(img_path, dist_min, dist_max, dist_num, proj_mode, render):
     resdata_dir, resfig_dir = datahandler.create_resdirs(img_path)
 
     try:
-        sampl_mesh = datahandler.load_mesh(os.path.join(resdata_dir, "sampling_mesh.ply"), recalc_normals=False,
+        sampl_mesh = datahandler.load_mesh(os.path.join(resdata_dir, "sampling_mesh.ply"), recalc_normals=True,
                                            clean=False)
+        print(f"Number of sampling vertices: {len(sampl_mesh.vertices)} !")
+        if flip_normals:
+            sampl_mesh.vertex_normals = -1 * sampl_mesh.vertex_normals
     except:
         print(f">> Failed to load sampling mesh from {img_path}!")
         return None
@@ -80,16 +85,17 @@ def main(img_path, dist_min, dist_max, dist_num, proj_mode, render):
     # ==== Save Sampling Vertices and Normals ====
     datahandler.save_array(sampl_mesh.vertices, "verts", header="x,y,z", folderpath=resdata_dir_layer)
     datahandler.save_array(sampl_mesh.vertex_normals, "normals", header="nx,ny,nz", folderpath=resdata_dir_layer)
-    # layer_mesh = analysis.scale_mesh(mesh=sampl_mesh, distance=dist_middle)
-    layer_mesh = sampl_mesh.copy()
-    datahandler.save_mesh(layer_mesh, filepath=os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
     # ==== Project onto Mesh ====
-    proj_layer = analysis.proj2mesh(img=img_raw, mesh=layer_mesh, min_dist_per_vert=dist_min_custom,
+    proj_layer = analysis.proj2mesh(img=img_raw, mesh=sampl_mesh, min_dist_per_vert=dist_min_custom,
                                     scale=img_scale, min_dist=dist_min, max_dist=dist_max,
                                     num_dist=dist_num, mode=proj_mode, show_proj=True,
                                     savefig=os.path.join(resfig_dir_layer, f"distgraph.png"), unit=img_unit,
-                                    normalise=False, hidefig=True)
+                                    normalise=False, hidefig=hidefig)
+    dist_middle = dist_min + (dist_max - dist_min) / 2
+    layer_mesh = analysis.scale_mesh(mesh=sampl_mesh, distance=dist_middle)
+    # layer_mesh = sampl_mesh.copy()
+    datahandler.save_mesh(layer_mesh, filepath=os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
     # ==== Save Projection ====
     datahandler.save_array(proj_layer, "intensities", header="I", folderpath=resdata_dir_layer)
@@ -97,20 +103,20 @@ def main(img_path, dist_min, dist_max, dist_num, proj_mode, render):
     # ==== Plot Projected Result ====
     mercator_x, mercator_y = analysis.spherical_project(pts=layer_mesh.vertices)
     visuals.plot_spherical_projection(phi=mercator_x, theta=mercator_y, intensities=proj_layer, hexgridsize=400,
-                                      savefig=os.path.join(resfig_dir_layer, "mercator.png"), hidefig=True)
+                                      savefig=os.path.join(resfig_dir_layer, "mercator.png"), hidefig=hidefig)
     visuals.plot_maxproj_pts(verts=layer_mesh.vertices, colors=proj_layer, cmap="Greens", hexsize=200, unit=img_unit,
-                             figsize=(18, 8), savefig=os.path.join(resfig_dir_layer, "maxproj.png"), hidefig=True)
+                             figsize=(18, 8), savefig=os.path.join(resfig_dir_layer, "maxproj.png"), hidefig=hidefig)
 
     if render:
         visuals.view_colored_mesh(mesh=layer_mesh, mesh_blending="opaque",
                                   vert_colors=visuals.color_scalar(analysis.normalise_range(proj_layer),
-                                                                   cmap="Greens"), img=img_raw, scale=img_scale)
-    return None
+                                                                   cmap="Greens_r"), img=img_raw, scale=img_scale)
+    return layer_mesh, proj_layer
 
 
 if __name__ == "__main__":
     print("======== START NEMO ========")
     args = parse_args()
     main(img_path=args.img_path, dist_min=args.dist_min, dist_max=args.dist_max, dist_num=args.dist_num,
-         proj_mode=args.proj_mode, render=args.render)
+         proj_mode=args.proj_mode, render=args.render, flip_normals=args.flip_normals, show_plots=args.show_plots)
     print("======== END NEMO ========")

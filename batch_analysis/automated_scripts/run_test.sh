@@ -21,11 +21,11 @@ echo "--------------------------------------"
 #LAYER_LABEL="proj_${MIN_DIST}_to_${MAX_DIST}_um"
 #EXTR_MODE="radius" # "nearest"
 #EXTR_SIZE=30
-#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan-orient-extract.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --patch_mode "$EXTR_MODE" --patch_size "$EXTR_SIZE"
+#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan_orient_extract.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --patch_mode "$EXTR_MODE" --patch_size "$EXTR_SIZE"
 #
 #AVG_MODE="radius" # "nearest"
 #AVG_SIZE=20
-#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan-nem-order.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --avg_mode "$AVG_MODE" --avg_size "$AVG_SIZE"
+#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan_nem_order.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --avg_mode "$AVG_MODE" --avg_size "$AVG_SIZE"
 
 
 
@@ -53,8 +53,8 @@ echo "--------------------------------------"
 #LAYER_LABEL="proj_${MIN_DIST}_to_${MAX_DIST}_um"
 #EXTR_MODE="radius" # "nearest"
 #EXTR_SIZE=30
-#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan-orient-extract.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --patch_mode "$EXTR_MODE" --patch_size "$EXTR_SIZE"
+#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan_orient_extract.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --patch_mode "$EXTR_MODE" --patch_size "$EXTR_SIZE"
 #
 #AVG_MODE="radius" # "nearest"
 #AVG_SIZE=20
-#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan-nem-order.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --avg_mode "$AVG_MODE" --avg_size "$AVG_SIZE"
+#"$PYTHON" "/Users/andreadi/Physbio Dropbox/Konstantinos Andreadis/Academic/Code/nemo/batch_analysis/automated_scripts/run_tan_nem_order.py" --img_path "$FILE" --layer_label "$LAYER_LABEL" --avg_mode "$AVG_MODE" --avg_size "$AVG_SIZE"

@@ -113,7 +113,7 @@ def clean_mesh(mesh):
     return mesh_cleaned
 
 
-def load_mesh(filepath, recalc_normals, clean=True):
+def load_mesh(filepath, recalc_normals, clean=False):
     print(f">> Loading mesh {filepath}...")
     try:
         mesh = trimesh.load(filepath)

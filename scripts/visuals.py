@@ -1033,6 +1033,26 @@ def plot_qsphi_profiles(dir_s, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiph
         plt.close()
 
 
+def plot_s_sphi_profile(dir_s, s_global,
+                        y_limits=None, figsize=(10, 5), savefig="", hidefig=False, dpi=200):
+    plt.figure(figsize=figsize)
+    plt.scatter(dir_s, s_global, color='tab:blue', alpha=0.5, s=5)
+    plt.xlabel("Arc length $s$ (µm)", fontsize=12)
+    plt.ylabel("Nematic Order $S$", fontsize=12)
+    plt.title(r"Tangential Nematic Order in $s$-$\phi$ basis", fontsize=14)
+    plt.grid(True)
+    if y_limits is not None:
+        plt.ylim(y_limits)
+    plt.tight_layout()
+    if savefig != "":
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
 def plot_qsphi_profiles_separated_phi(dir_s, dir_phi, s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi,
                                       Q_sphi_mean, y_limits=None,
                                       figsize=(10, 10), savefig="", hidefig=False, dpi=200):

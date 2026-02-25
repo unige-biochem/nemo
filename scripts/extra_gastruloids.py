@@ -18,10 +18,10 @@ from skimage import measure
 from skimage.morphology import skeletonize_3d, medial_axis
 from sklearn.decomposition import PCA
 
-from scripts.datahandler import create_resdirs, load_mesh, load_array, save_array
+from scripts.analysis import coord_search_radius, avg_tan_nem_tens
+from scripts.datahandler import create_resdirs, load_mesh, load_array
 from scripts.visuals import plot_qsphi_profiles, plot_qsphi_profiles_separated_phi, plot_scatter, plot_rho_profile, \
     plot_cylindrical_projection
-from scripts.analysis import coord_search_radius, avg_tan_nem_tens
 
 
 def load_png(filepath):
@@ -39,31 +39,63 @@ def skeletonise_mesh(mesh, voxel_size):
     skel = skeletonize_3d(voxelized_grid)
     skel_coords = np.ceil(np.argwhere(skel > 0) * voxelized.pitch + voxelized.translation).astype(int)
     print(f"Found {len(skel_coords)} skeleton points!")
-    return skel_coords
+    return skel_coords, voxelized_grid
 
 
-def order_points_along_path(points, start_idx=None):
-    points = np.asarray(points)
-    tree = KDTree(points)
-    N = len(points)
-    ordered = np.zeros(N, dtype=int)
-    used = np.zeros(N, dtype=bool)
+# def order_points_along_path(points, start_idx=None):
+#     points = np.asarray(points)
+#     tree = KDTree(points)
+#     N = len(points)
+#     ordered = np.zeros(N, dtype=int)
+#     used = np.zeros(N, dtype=bool)
+#
+#     if start_idx is None:
+#         start_idx = np.unravel_index(np.argmin(points), points.shape)[0]
+#
+#     ordered[0] = start_idx
+#     used[start_idx] = True
+#     curr = start_idx
+#
+#     for i in range(1, N):
+#         _, idx = tree.query(points[curr], k=N)
+#         next_idx = next(j for j in idx if not used[j])
+#         ordered[i] = next_idx
+#         used[next_idx] = True
+#         curr = next_idx
+#
+#     return points[ordered]
+
+
+def order_line_points(points, start_idx=None, neigh_k=6):
+    P = np.asarray(points)
+    N = len(P)
+    tree = KDTree(P)
 
     if start_idx is None:
-        start_idx = np.unravel_index(np.argmin(points), points.shape)[0]
+        start_idx = np.argmin(P[:, 2])
 
-    ordered[0] = start_idx
+    ordered = [start_idx]
+    used = np.zeros(N, dtype=bool)
     used[start_idx] = True
+
     curr = start_idx
 
-    for i in range(1, N):
-        _, idx = tree.query(points[curr], k=N)
-        next_idx = next(j for j in idx if not used[j])
-        ordered[i] = next_idx
+    for _ in range(N - 1):
+        dists, idxs = tree.query(P[curr], k=neigh_k)
+        next_idx = next((i for i in idxs if not used[i]), None)
+        if next_idx is None:
+            break
+        ordered.append(next_idx)
         used[next_idx] = True
-        curr = next_idx
+        prev, curr = curr, next_idx
+    if not all(used):
+        unused = np.where(~used)[0]
+        for u in unused:
+            dists = np.linalg.norm(P[ordered] - P[u], axis=1)
+            insert_at = np.argmin(dists)
+            ordered.insert(insert_at, u)
 
-    return points[ordered]
+    return P[ordered]
 
 
 def reparametrize_curve_by_curvature(curve, smooth=0.1):
@@ -78,10 +110,10 @@ def reparametrize_curve_by_curvature(curve, smooth=0.1):
     return curve_uniform
 
 
-def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, smooth=100, sample_interv=3,
-                                           step_u=0.01):
-    print(f">> Fitting spline of order {order_k}...")
-    x, y, z = curve[::sample_interv].T
+def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, smooth=100, step_u=0.01):
+    print(
+        f">> Fitting spline to {len(curve)} points with order {order_k}, smooth {smooth}, step_u {step_u} and {num_pts} points...")
+    x, y, z = curve.T
     tck, u = splprep([x, y, z], s=smooth, k=order_k)
     u_max = 1.0
     while True:
@@ -104,6 +136,7 @@ def spline_fit_curve_3d_extend_inside_mesh(curve, mesh, order_k=2, num_pts=200, 
 
 
 def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
+    print(f">> Fitting PCA line to mesh with oversample {oversample} and {num_points} points...")
     vertices = mesh.vertices
     centroid = vertices.mean(axis=0)
     pca = PCA(n_components=3)
@@ -238,7 +271,8 @@ def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
     return values[keep_mask]
 
 
-def extract_profile(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutoff_phi=np.pi / 3, profile_bins=30):
+def proj_nem_on_sphi(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutoff_phi=np.pi / 3, profile_bins=30,
+                     hidefig=True):
     print(f"Selected image path: {img_path}")
     if not os.path.exists(img_path):
         print(f"Image path does not exist: {img_path} !")
@@ -257,37 +291,7 @@ def extract_profile(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutof
     idxs_sel = load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
     directors_2dcurved = load_array("directors_2dcurved", folderpath=resdata_dir_layer)
 
-    # ==== Load 2D+ nematic order ====
-    centerline_fitted = load_array(name="3d_midline_curve", folderpath=os.path.join(resdata_dir_layer))
-    if centerline_fitted is None:
-        print(f"[!] Could not find midline of layer {layer_label} of {img_path}!")
-        print(">> Attempting to find midline of mesh...")
-        voxel_size = 5
-        spline_order_k = 2
-        spline_num_pts = 1000
-        spline_smooth_factor = 200
-        spline_sample_inveral = 3
-        spline_step_u = 0.01
-        centerline = skeletonise_mesh(mesh=layer_mesh, voxel_size=voxel_size)
-        centerline_ordered = order_points_along_path(centerline)
-        use_pca = False
-        if len(centerline) <= 3 or use_pca:
-            print(f"Not possible to fit curve, reverting to PCA...")
-            centerline_fitted = pca_axis_line_extend_inside_mesh(mesh=layer_mesh, num_points=spline_num_pts,
-                                                                 oversample=100)
-        else:
-            centerline_fitted = spline_fit_curve_3d_extend_inside_mesh(
-                centerline_ordered,
-                layer_mesh,
-                order_k=spline_order_k,
-                num_pts=spline_num_pts,
-                smooth=spline_smooth_factor,
-                sample_interv=spline_sample_inveral,
-                step_u=spline_step_u
-            )
-            centerline_fitted = reparametrize_curve_by_curvature(centerline_fitted)
-        save_array(centerline_fitted, name="3d_midline_curve", header="x,y,z",
-                   folderpath=os.path.join(resdata_dir_layer))
+    centerline_fitted = load_array(name="3d_midline_curve", folderpath=os.path.join(resdata_dir))
     dir_coords = cylindrical_along_curve(points=directors_2dcurved[:, :3], curve=centerline_fitted)
     dir_s, dir_rho, dir_phi = dir_coords
     mesh_coords = cylindrical_along_curve(points=layer_mesh.vertices, curve=centerline_fitted)
@@ -298,13 +302,14 @@ def extract_profile(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutof
     mesh_phi = shift_angle_periodic(angle=mesh_phi, angle_zerobase=phi_new_zero)
     dir_phi = shift_angle_periodic(angle=dir_phi, angle_zerobase=phi_new_zero)
     plot_scatter(x=mesh_phi, y=proj_layer, title="Projection Intensity vs. Angle", xlabel=r"$\phi$ (rad)",
-                 ylabel="Projection Intensity (a.u.)", xlim=[-np.pi, np.pi],
+                 ylabel="Projection Intensity (a.u.)", xlim=[-np.pi, np.pi], hidefig=hidefig,
                  savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.png"))
 
     plot_cylindrical_projection(phi=mesh_phi, rho=mesh_rho, s=mesh_s, colors=proj_layer, aspect="equal",
+                                hidefig=hidefig,
                                 title=f"Projected Intensities \n{layer_label}", hexsize=300, cmap="inferno",
                                 savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.png"))
-    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit,
+    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}.png"))
 
     e_s, e_phi, e_rho = create_s_phi_basis(points=directors_2dcurved[:, :3], curve=centerline_fitted,
@@ -338,9 +343,9 @@ def extract_profile(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutof
 
     plot_cylindrical_projection(phi=mesh_phi, rho=mesh_rho, s=mesh_s, colors=proj_layer, aspect="equal",
                                 title=f"Cropped Projected Intensities \n{layer_label}", hexsize=300,
-                                cmap="inferno", figsize=(10, 5),
+                                cmap="inferno", figsize=(10, 5), hidefig=hidefig,
                                 savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.png"))
-    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit,
+    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}_cropped.png"))
 
     # ==== Tune Curved Nematic Analysis Number of Neighbours ====
@@ -371,11 +376,11 @@ def extract_profile(img_path, layer_label, low_cutoff_phi=-np.pi / 3, high_cutof
     plot_qsphi_profiles(dir_s=dir_s, s_bin_centers=s_bin_centers, Q_ss=Q_ss,
                         Q_ss_mean=Q_ss_mean, Q_phiphi=Q_phiphi,
                         Q_phiphi_mean=Q_phiphi_mean, Q_sphi=Q_sphi, Q_sphi_mean=Q_sphi_mean,
-                        y_limits=[-0.5, 0.5],
+                        y_limits=[-0.5, 0.5], hidefig=hidefig,
                         savefig=os.path.join(resfig_dir_layer, f"q-sphi-profile-{img_unit}.png"))
 
     plot_qsphi_profiles_separated_phi(dir_s=dir_s, dir_phi=dir_phi, s_bin_centers=s_bin_centers, Q_ss=Q_ss,
-                                      Q_ss_mean=Q_ss_mean, Q_phiphi=Q_phiphi,
+                                      Q_ss_mean=Q_ss_mean, Q_phiphi=Q_phiphi, hidefig=hidefig,
                                       Q_phiphi_mean=Q_phiphi_mean, Q_sphi=Q_sphi, Q_sphi_mean=Q_sphi_mean,
                                       y_limits=[-0.5, 0.5], savefig=os.path.join(resfig_dir_layer,
                                                                                  f"q-sphi-by-phi-profile-{img_unit}.png"))

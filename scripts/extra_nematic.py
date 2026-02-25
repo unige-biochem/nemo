@@ -1,3 +1,18 @@
+"""
+Extra Nematic Analysis Modules for NEMO, the Nematics & Morphology Toolkit.
+Author: Konstantinos Andreadis
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scripts.analysis import (
+    coord_search_radius,
+    compute_orientation_with_intensity,
+    coord_search_neighbours,
+    compute_2d_orientation,
+    expand_2d_array
+)
+
 def expand_3d_array(array, num):
     if type(num) is not int:
         return np.repeat(np.repeat(np.repeat(array, num[0], axis=0), num[1], axis=1), num[2], axis=2)

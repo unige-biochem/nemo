@@ -25,8 +25,7 @@ def parse_args():
     parser.add_argument("--box_size", default=2, type=int, help="Size of the marching cubes box")
     parser.add_argument("--overwrite", action=argparse.BooleanOptionalAction, help="Mesh again")
     parser.add_argument("--show_figures", action=argparse.BooleanOptionalAction, help="Show figures")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(img_path, img_blur_val, img_thresh_val, no_smoothing, overwrite, box_size, show_figures):

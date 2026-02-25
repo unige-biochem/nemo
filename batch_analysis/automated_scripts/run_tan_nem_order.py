@@ -6,7 +6,8 @@ Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
 # Import NEMO scripts
-import os, sys
+import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from scripts import analysis, datahandler, visuals
@@ -23,8 +24,7 @@ def parse_args():
     parser.add_argument("--render", action=argparse.BooleanOptionalAction, help="Render in 3D")
     parser.add_argument("--avg_mode", type=str, default="radius", choices=["radius", "nearest"], help="Averaging mode")
     parser.add_argument("--avg_size", type=float, default=20.0, help="Averaging size")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(img_path, layer_label, render, avg_mode, avg_size):
@@ -98,11 +98,11 @@ def main(img_path, layer_label, render, avg_mode, avg_size):
         return None
 
     # ==== Calculate Curved Nematic Order ====
-    S_2dcurv, n_avg_2dcurv = analysis.avg_tan_nem_tens(t1_cov=tan_x, t2_cov=tan_y, directors=directors_2dcurved,
+    s_2dcurv, n_avg_2dcurv = analysis.avg_tan_nem_tens(t1_cov=tan_x, t2_cov=tan_y, directors=directors_2dcurved,
                                                        neigh_idxs=neigh_idxs)
 
     # ==== Save Curved Nematic Order ====
-    datahandler.save_array(S_2dcurv, name=f"S-order_2dcurved_{patch_label}", header="S",
+    datahandler.save_array(s_2dcurv, name=f"S-order_2dcurved_{patch_label}", header="S",
                            folderpath=resdata_dir_layer)
     datahandler.save_array(np.column_stack((veccoords, n_avg_2dcurv)),
                            name=f"directors-avg_2dcurved_{patch_label}",
@@ -115,9 +115,9 @@ def main(img_path, layer_label, render, avg_mode, avg_size):
     savefig_hist = os.path.join(resfig_dir_layer, f"hist_intial-order-s_{patch_label}.png")
 
     visuals.plot_dir_field(directors=directors_2dcurved_avg, veclength=vec_length, view_init=plot2d_view,
-                           veccolor=S_2dcurv, cmap_label="order scalar $S$", title=title_render, manual_vminmax=[0, 1],
+                           veccolor=s_2dcurv, cmap_label="order scalar $S$", title=title_render, manual_vminmax=[0, 1],
                            savefig=savefig_render, figsize=renderfigsize, show_axes=False, hidefig=True)
-    visuals.plot_hist(array=S_2dcurv, title=title_hist, savefig=savefig_hist,
+    visuals.plot_hist(array=s_2dcurv, title=title_hist, savefig=savefig_hist,
                       figsize=histfigsize, xlim=[0, 1], hidefig=True)
 
     sph_proj_phi, sph_proj_theta = analysis.spherical_project(pts=layer_mesh.vertices)
@@ -136,7 +136,7 @@ def main(img_path, layer_label, render, avg_mode, avg_size):
         hexgridsize=400,
         scale_factor=5,
         cmap="Greys_r", vec_width=0.0015,
-        veccolor=S_2dcurv,
+        veccolor=s_2dcurv,
         vec_manual_vminmax=[0, 1],
         arrow_alpha=1.0, figsize=(20, 13), hidefig=True,
         savefig=os.path.join(resfig_dir_layer, f"spherical_projection_field_avg-nematic_{patch_label}.png")
@@ -151,17 +151,17 @@ def main(img_path, layer_label, render, avg_mode, avg_size):
         visuals.view_colored_verts(verts=veccoords, colors=list(patch_color), use_orig_color=True)
         # ==== 3D Render Curved Nematic Order ====
         visuals.view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg,
-                                            vec_colors=visuals.color_scalar(S_2dcurv, manual_vminmax=[0, 1]),
+                                            vec_colors=visuals.color_scalar(s_2dcurv, manual_vminmax=[0, 1]),
                                             mesh_vert_colors=visuals.color_scalar(analysis.normalise_range(proj_layer),
                                                                                   cmap="Greys_r"),
                                             vec_length=vec_length, vec_edge_width=vec_edge_width)
         visuals.view_3d_vector_field(vec_pos=directors_2dcurved_avg[:, :3], vec_dir=directors_2dcurved_avg[:, 3:],
-                                     vec_colors=visuals.color_scalar(S_2dcurv, cmap="Spectral", manual_vminmax=[0, 1]),
+                                     vec_colors=visuals.color_scalar(s_2dcurv, cmap="Spectral", manual_vminmax=[0, 1]),
                                      length=vec_length, pts_size=1,
                                      edge_width=vec_edge_width)
 
         visuals.view_3d_vector_field(vec_pos=directors_2dcurved_avg[:, :3], vec_dir=directors_2dcurved_avg[:, 3:],
-                                     vec_colors=visuals.color_scalar(S_2dcurv, cmap="Spectral"),
+                                     vec_colors=visuals.color_scalar(s_2dcurv, cmap="Spectral"),
                                      length=vec_length, edge_width=vec_edge_width,
                                      verts=layer_mesh.vertices,
                                      verts_colors=visuals.color_scalar(analysis.normalise_range(proj_layer),

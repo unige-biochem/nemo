@@ -19,8 +19,7 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--img_path", default="", required=True, type=str, help="Path to the input TIFF image")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(img_path):
@@ -63,7 +62,7 @@ def main(img_path):
         return None
 
     crop_max_ar = 8.0  # Max for colorbar !
-    local_S_weighted_max = 3.0  # Max for colorbar !
+    local_s_weighted_max = 3.0  # Max for colorbar !
     xy_pixel_scale = np.mean(img_scale[1:])
     file_ending = "png"
 
@@ -171,12 +170,12 @@ def main(img_path):
                 # title_hist = title_render = None
                 print(f"[!] Unknown patch type: {patch_type}")
 
-            S_2d_seg_local, n_2d_seg_local = analysis.avg_2d_nem_tens(directors_2d, weights=None,
+            s_2d_seg_local, n_2d_seg_local = analysis.avg_2d_nem_tens(directors_2d, weights=None,
                                                                       neigh_idxs=local_idxs)
-            S_2d_seg_local_weighted, n_2d_seg_local = analysis.avg_2d_nem_tens(directors_2d, local_idxs,
+            s_2d_seg_local_weighted, n_2d_seg_local = analysis.avg_2d_nem_tens(directors_2d, local_idxs,
                                                                                weights=np.array(
                                                                                    seg_ellips_results["shape_scalar"]))
-            print(f"Max weighted order S: {S_2d_seg_local_weighted.max()}")
+            print(f"Max weighted order S: {s_2d_seg_local_weighted.max()}")
             patch_size = patch_avg[1]
 
             # ==== Plot Results ====
@@ -236,7 +235,7 @@ def main(img_path):
                                         angle_field=np.radians(seg_ellips_results["Ellipse.Orientation"]),
                                         matrix=img_raw[z_sel],
                                         veclength=15 * np.array(seg_ellips_results["aspect_ratio"]),
-                                        scale=img_scale, unit=img_unit, figsize=figsize, vec_colors=S_2d_seg_local,
+                                        scale=img_scale, unit=img_unit, figsize=figsize, vec_colors=s_2d_seg_local,
                                         vec_cmap_limits=[0, 1], cbar_matrix_label="Intensity Signal (a.u.)",
                                         cbar_vector_label="Local Nematic Order $S$",
                                         title=f"Local Nematic Order {patch_label} {z_sel_label}",
@@ -244,14 +243,14 @@ def main(img_path):
                                                              f"z-{z_sel}_seg_raw_local_S_{patch_label}.{file_ending}"),
                                         hidefig=hide_all_figs, dpi=dpi_all_figs)
             if len(seg_ellips_results) > 4:
-                visuals.plot_slice_heatmap(coords=directors_2d[:, :2], values=S_2d_seg_local, pt_size=5,
+                visuals.plot_slice_heatmap(coords=directors_2d[:, :2], values=s_2d_seg_local, pt_size=5,
                                            cmap_label="Local Nematic Order",
                                            title=f"Local Nematic Order {patch_label} {z_sel_label}",
                                            img_dim=img_dim, img_scale=img_scale, manual_vminvmax=[0, 1],
                                            savefig=os.path.join(resfig_dir_2dsliced,
                                                                 f"z-{z_sel}_seg_local_S_heatmap_{patch_label}.{file_ending}"),
                                            hidefig=hide_all_figs, dpi=dpi_all_figs)
-            visuals.plot_hist(S_2d_seg_local, title=f"Local Nematic Order $S$ {patch_label} {z_sel_label}",
+            visuals.plot_hist(s_2d_seg_local, title=f"Local Nematic Order $S$ {patch_label} {z_sel_label}",
                               savefig=os.path.join(resfig_dir_2dsliced,
                                                    f"z-{z_sel}_seg_local_S_hist_{patch_label}.{file_ending}"),
                               hidefig=hide_all_figs, xlim=[0, 1], dpi=dpi_all_figs)
@@ -262,28 +261,28 @@ def main(img_path):
                                         matrix=img_raw[z_sel],
                                         veclength=15 * np.array(seg_ellips_results["aspect_ratio"]),
                                         scale=img_scale, unit=img_unit, figsize=figsize,
-                                        vec_colors=S_2d_seg_local_weighted,
+                                        vec_colors=s_2d_seg_local_weighted,
                                         cbar_matrix_label="Intensity Signal (a.u.)",
-                                        vec_cmap_limits=[0, local_S_weighted_max],
+                                        vec_cmap_limits=[0, local_s_weighted_max],
                                         cbar_vector_label="Local Weighted Nematic Order $S$",
                                         title=f"Local Weighted Nematic Order {patch_label} {z_sel_label}",
                                         savefig=os.path.join(resfig_dir_2dsliced,
                                                              f"z-{z_sel}_seg_raw_local_S_weighted_{patch_label}.{file_ending}"),
                                         hidefig=hide_all_figs, dpi=dpi_all_figs)
             if len(seg_ellips_results) > 4:
-                visuals.plot_slice_heatmap(coords=directors_2d[:, :2], values=S_2d_seg_local_weighted,
+                visuals.plot_slice_heatmap(coords=directors_2d[:, :2], values=s_2d_seg_local_weighted,
                                            cmap_label="Local Weighted Nematic Order", pt_size=5,
                                            title=f"Local Weighted Nematic Order {patch_label} {z_sel_label}",
                                            img_dim=img_dim, img_scale=img_scale,
-                                           manual_vminvmax=[0, local_S_weighted_max],
+                                           manual_vminvmax=[0, local_s_weighted_max],
                                            savefig=os.path.join(resfig_dir_2dsliced,
                                                                 f"z-{z_sel}_seg_local_S_weighted_heatmap_{patch_label}.{file_ending}"),
                                            hidefig=hide_all_figs, dpi=dpi_all_figs)
-            visuals.plot_hist(S_2d_seg_local_weighted,
+            visuals.plot_hist(s_2d_seg_local_weighted,
                               title=f"Local Weighted Nematic Order $S$ {patch_label} {z_sel_label}",
                               savefig=os.path.join(resfig_dir_2dsliced,
                                                    f"z-{z_sel}_seg_local_S_weighted_hist_{patch_label}.{file_ending}"),
-                              hidefig=hide_all_figs, xlim=[0, local_S_weighted_max], dpi=dpi_all_figs)
+                              hidefig=hide_all_figs, xlim=[0, local_s_weighted_max], dpi=dpi_all_figs)
     # valid_2dseg_idxs = np.array(valid_2dseg_idxs, dtype=int)
     # ==== Save Result Figures as .gif ====
     # datahandler.save_gif_multiple(folderpath=os.path.join(resfig_dir, "2d-sliced_analysis"))

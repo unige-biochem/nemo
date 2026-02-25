@@ -19,8 +19,7 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--img_path", default="", required=True, type=str, help="Path to the input TIFF image")
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(img_path):
