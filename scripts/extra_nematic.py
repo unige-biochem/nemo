@@ -3,8 +3,8 @@ Extra Nematic Analysis Modules for NEMO, the Nematics & Morphology Toolkit.
 Author: Konstantinos Andreadis
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+
 from scripts.analysis import (
     coord_search_radius,
     compute_orientation_with_intensity,
@@ -12,6 +12,7 @@ from scripts.analysis import (
     compute_2d_orientation,
     expand_2d_array
 )
+
 
 def expand_3d_array(array, num):
     if type(num) is not int:
@@ -71,21 +72,123 @@ def avg_3d_nem_tens(directors, neigh_idxs, debug=False):
     return S_order, n_avg
 
 
+# def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
+#                                  defect_idxs_calc, m_charge, patch_type, patch_size,
+#                                  show_profile=False):
+#     pol_vec_2d = None
+#     pol_positions, pol_vectors, pol_idxs = [], [], []
+#
+#     directors_v = directors[:, 3:6]
+#     directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
+#
+#     for d_idx, charge in zip(defect_idxs_calc, m_charge):
+#         if not (0.4 < abs(charge) < 0.6):
+#             continue
+#
+#         core_idx_sel = idxs_sel[d_idx]
+#         core_vertex = mesh.vertices[core_idx_sel]
+#         if patch_type == "radius":
+#             neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
+#                                                  custom_probes=[core_vertex],
+#                                                  r=patch_size)[0]
+#         elif patch_type == "nearest":
+#             neigh_idxs_sel = coord_search_neighbours(mesh.vertices[idxs_sel],
+#                                                      custom_probes=[core_vertex],
+#                                                      k=patch_size)[0]
+#         else:
+#             raise ValueError(f"Unknown patch type: {patch_type}")
+#
+#         if len(neigh_idxs_sel) < 10:
+#             continue
+#
+#         neigh_dirs = directors_v[neigh_idxs_sel]
+#         neigh_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]]
+#         normal = vertex_normals[core_idx_sel]
+#         normal /= np.linalg.norm(normal)
+#         t1 = np.cross(normal, [1, 0, 0])
+#         if np.linalg.norm(t1) < 1e-6:
+#             t1 = np.cross(normal, [0, 1, 0])
+#         t1 /= np.linalg.norm(t1)
+#         t2 = np.cross(normal, t1)
+#
+#         rel_pos = neigh_pos - core_vertex
+#         x = rel_pos @ t1
+#         y = rel_pos @ t2
+#         theta = np.arctan2(y, x)
+#
+#         d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
+#         phi = np.arctan2(d_proj[:, 1], d_proj[:, 0])
+#         q = np.exp(1j * 2 * phi)
+#         base_angle = None
+#
+#         if charge > 0:  # +1/2 defect
+#             ex = np.cos(theta)
+#             ey = np.sin(theta)
+#             w = np.cos(2 * (phi - theta))
+#             pol_vec_2d = np.array([np.sum(w * ex), np.sum(w * ey)])
+#             pol_vec_2d /= np.linalg.norm(pol_vec_2d) + 1e-12
+#             pol = pol_vec_2d[0] * t1 + pol_vec_2d[1] * t2
+#             pol_positions.append(core_vertex)
+#             pol_vectors.append(pol)
+#             pol_idxs.append(d_idx)
+#         else:  # -1/2 defect (threefold symmetric)
+#             base_angle = 2 / 3 * np.angle(np.sum(q))
+#             for k in range(3):
+#                 angle = base_angle + k * 2 * np.pi / 3
+#                 pol = np.cos(angle) * t1 + np.sin(angle) * t2
+#                 pol_positions.append(core_vertex)
+#                 pol_vectors.append(pol)
+#                 pol_idxs.append(d_idx)
+#         if show_profile:
+#             fig, ax = plt.subplots(figsize=(5, 5))
+#             ax.set_aspect('equal')
+#             ax.set_title(f"Defect {d_idx}, charge {charge:.2f}")
+#
+#             scale = 0.15 * patch_size
+#             ax.quiver(x, y,
+#                       np.cos(phi) * scale, np.sin(phi) * scale,
+#                       color='blue', alpha=0.5, label='Directors')
+#             if charge > 0:
+#                 ax.quiver(0, 0,
+#                           pol_vec_2d[0] * scale * 3,
+#                           pol_vec_2d[1] * scale * 3,
+#                           color='red', width=0.02, label='Polarisation')
+#             else:
+#                 for k in range(3):
+#                     angle = base_angle + k * 2 * np.pi / 3
+#                     ax.quiver(0, 0,
+#                               np.cos(angle) * scale * 3,
+#                               np.sin(angle) * scale * 3,
+#                               color='red', width=0.02)
+#
+#             ax.scatter(0, 0, color='k', s=50, marker='x', label='Core')
+#             ax.legend()
+#             plt.show()
+#
+#     print(f"Found {len(pol_positions)} polarisation vectors!")
+#     return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)
+
+import numpy as np
+
+
 def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
                                  defect_idxs_calc, m_charge, patch_type, patch_size,
                                  show_profile=False):
-    pol_vec_2d = None
     pol_positions, pol_vectors, pol_idxs = [], [], []
 
     directors_v = directors[:, 3:6]
     directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
 
     for d_idx, charge in zip(defect_idxs_calc, m_charge):
-        if not (0.4 < abs(charge) < 0.6):
+        # Identify charge sign (s)
+        s = np.round(charge * 2) / 2
+        if not (abs(s) == 0.5):
             continue
 
         core_idx_sel = idxs_sel[d_idx]
         core_vertex = mesh.vertices[core_idx_sel]
+
+        # --- Neighborhood Retrieval ---
         if patch_type == "radius":
             neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
                                                  custom_probes=[core_vertex],
@@ -100,8 +203,7 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         if len(neigh_idxs_sel) < 10:
             continue
 
-        neigh_dirs = directors_v[neigh_idxs_sel]
-        neigh_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]]
+        # --- Local Basis (t1, t2) ---
         normal = vertex_normals[core_idx_sel]
         normal /= np.linalg.norm(normal)
         t1 = np.cross(normal, [1, 0, 0])
@@ -110,61 +212,59 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         t1 /= np.linalg.norm(t1)
         t2 = np.cross(normal, t1)
 
-        rel_pos = neigh_pos - core_vertex
-        x = rel_pos @ t1
-        y = rel_pos @ t2
-        theta = np.arctan2(y, x)
+        # --- Project Positions and Directors ---
+        rel_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]] - core_vertex
+        # Spatial angle (phi in Function 2)
+        phi_spatial = np.arctan2(rel_pos @ t2, rel_pos @ t1)
 
-        d_proj = np.stack([neigh_dirs @ t1, neigh_dirs @ t2], axis=1)
-        phi = np.arctan2(d_proj[:, 1], d_proj[:, 0])
-        q = np.exp(1j * 2 * phi)
-        base_angle = None
+        # Director angle (theta in Function 2)
+        neigh_dirs = directors_v[neigh_idxs_sel]
+        d_proj_x = neigh_dirs @ t1
+        d_proj_y = neigh_dirs @ t2
+        theta_dir = np.arctan2(d_proj_y, d_proj_x)
 
-        if charge > 0:  # +1/2 defect
-            ex = np.cos(theta)
-            ey = np.sin(theta)
-            w = np.cos(2 * (phi - theta))
-            pol_vec_2d = np.array([np.sum(w * ex), np.sum(w * ey)])
-            pol_vec_2d /= np.linalg.norm(pol_vec_2d) + 1e-12
-            pol = pol_vec_2d[0] * t1 + pol_vec_2d[1] * t2
+        # --- MATCHING MATH: Complex Phase Extraction ---
+        # Calculation: Z = mean( exp( i * (2*theta - 2*s*phi) ) )
+        # This finds the intrinsic phase phi_0
+        Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * s * phi_spatial)))
+        phi_0 = np.angle(Z) / 2
+
+        current_pols_3d = []
+
+        if s > 0:  # +1/2 Comet
+            alpha = 2 * phi_0
+            pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
+            current_pols_3d.append(pol)
+        else:  # -1/2 Trefoil
+            for m in range(3):
+                alpha = (2.0 / 3.0) * (phi_0 + m * np.pi)
+                pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
+                current_pols_3d.append(pol)
+        for p in current_pols_3d:
             pol_positions.append(core_vertex)
-            pol_vectors.append(pol)
+            pol_vectors.append(p)
             pol_idxs.append(d_idx)
-        else:  # -1/2 defect (threefold symmetric)
-            base_angle = 2 / 3 * np.angle(np.sum(q))
-            for k in range(3):
-                angle = base_angle + k * 2 * np.pi / 3
-                pol = np.cos(angle) * t1 + np.sin(angle) * t2
-                pol_positions.append(core_vertex)
-                pol_vectors.append(pol)
-                pol_idxs.append(d_idx)
+
         if show_profile:
             fig, ax = plt.subplots(figsize=(5, 5))
             ax.set_aspect('equal')
-            ax.set_title(f"Defect {d_idx}, charge {charge:.2f}")
+            ax.set_title(f"Defect {d_idx}, s={s}")
 
+            x_2d = rel_pos @ t1
+            y_2d = rel_pos @ t2
             scale = 0.15 * patch_size
-            ax.quiver(x, y,
-                      np.cos(phi) * scale, np.sin(phi) * scale,
-                      color='blue', alpha=0.5, label='Directors')
-            if charge > 0:
-                ax.quiver(0, 0,
-                          pol_vec_2d[0] * scale * 3,
-                          pol_vec_2d[1] * scale * 3,
-                          color='red', width=0.02, label='Polarisation')
-            else:
-                for k in range(3):
-                    angle = base_angle + k * 2 * np.pi / 3
-                    ax.quiver(0, 0,
-                              np.cos(angle) * scale * 3,
-                              np.sin(angle) * scale * 3,
-                              color='red', width=0.02)
 
-            ax.scatter(0, 0, color='k', s=50, marker='x', label='Core')
-            ax.legend()
+            ax.quiver(x_2d, y_2d, d_proj_x * scale, d_proj_y * scale,
+                      color='blue', alpha=0.3)
+
+            for p in current_pols_3d:
+                p2d = [p @ t1, p @ t2]
+                ax.quiver(0, 0, p2d[0] * scale * 3, p2d[1] * scale * 3,
+                          color='red', width=0.02, pivot='tail')
+
+            ax.scatter(0, 0, color='k', marker='x')
             plt.show()
 
-    print(f"Found {len(pol_positions)} polarisation vectors!")
     return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)
 
 

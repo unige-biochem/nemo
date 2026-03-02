@@ -108,21 +108,20 @@ def main(img_path, spline_num_pts=2000, voxel_size=2.0, spline_order_k=2, spline
     datahandler.save_array(np.column_stack((mesh_s, mesh_rho, mesh_phi)), name="mesh_s-rho-phi", header="s,rho,phi",
                            folderpath=resdata_dir)
 
-    mesh_extent = np.ptp(gastr_mesh.vertices, axis=0)
+    mesh_extent = 10 * np.ptp(gastr_mesh.vertices, axis=0)
     gastr_mesh_simplified = gastr_mesh.simplify_quadric_decimation(face_count=10000)
+
     visuals.plot_img(img=np.zeros(shape=(1, 1, 1)), scale=(1, 1, 1), unit="um",
-                     meshes=[gastr_mesh_simplified, trimesh.Trimesh(vertices=centerline_fitted)], mesh_alpha=[0.1, 1.0],
-                     slice_depth=mesh_extent.max(), mesh_colors=["grey", "blue"],
-                     max_proj=True, hidefig=hidefig, mesh_thick=0.2,
+                     meshes=[gastr_mesh_simplified, trimesh.Trimesh(vertices=centerline_fitted)],
+                     mesh_alpha=0.5,
+                     slice_depth=mesh_extent.max(),
+                     mesh_colors=["grey",
+                                  visuals.color_scalar(np.linspace(0, 1, len(centerline_fitted)), cmap="Spectral")],
+                     max_proj=True, hidefig=hidefig, mesh_thick=0.5,
                      savefig=os.path.join(resfig_dir, "3d_midline_curve.png"))
 
     visuals.plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit, hidefig=hidefig,
                              savefig=os.path.join(resfig_dir, f"rho-profile.png"))
-    # visuals.view_colored_mesh(gastr_mesh, vert_colors="white", markers=centerline_fitted, mesh_shading="flat",
-    #                           mesh_opacity=0.6,
-    #                           mesh_blending="translucent_no_depth",
-    #                           marker_colors=visuals.color_scalar(np.linspace(0, 1, len(centerline_fitted)),
-    #                                                              cmap="Blues"))
 
     if render:
         visuals.view_colored_mesh_multiple([gastr_mesh, gastr_mesh, gastr_mesh, gastr_mesh],
@@ -140,6 +139,11 @@ def main(img_path, spline_num_pts=2000, voxel_size=2.0, spline_order_k=2, spline
                                            mesh_opacity_list=[0.6, 1.0, 1.0, 1.0],
                                            marker_colors=visuals.color_scalar(np.linspace(0, 1, len(centerline_fitted)),
                                                                               cmap="Blues"))
+        visuals.view_colored_mesh(gastr_mesh, vert_colors="white", markers=centerline_fitted, mesh_shading="flat",
+                                  mesh_opacity=0.6,
+                                  mesh_blending="translucent_no_depth",
+                                  marker_colors=visuals.color_scalar(np.linspace(0, 1, len(centerline_fitted)),
+                                                                     cmap="Blues"))
 
     return centerline_fitted, mesh_s, mesh_rho, mesh_phi
 

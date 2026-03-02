@@ -7,7 +7,7 @@ Author: Konstantinos Andreadis
 # IMPORT LIBRARIES #
 ####################
 import numpy as np
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import map_coordinates, gaussian_filter
 
 
 #################
@@ -255,3 +255,72 @@ def spherical_defect(n, mode):
     t2_raw = np.column_stack((T2_x.flatten(), T2_y.flatten(), T2_z.flatten()))
     vecdata = np.column_stack((X.flatten(), Y.flatten(), Z.flatten(), vx.flatten(), vy.flatten(), vz.flatten()))
     return vecdata, t1_raw, t2_raw
+
+
+def generate_nemo_master_bench(l=256, do_inner=True, do_outer=True, r_inner=100, r_outer=130, dr=1.5, steps=40,
+                               seed_density=0.012):
+    print(f">> Initializing 3D manifold simulation...")
+    vol = np.zeros((l, l, l), dtype=np.float32)
+    center = np.array([l // 2, l // 2, l // 2])
+    z, y, x = np.indices((l, l, l))
+    dx = (x - center[0]).astype(np.float32)
+    dy = (y - center[1]).astype(np.float32)
+    dz = (z - center[2]).astype(np.float32)
+    dist = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2) + 1e-9
+    nx, ny, nz = dx / dist, dy / dist, dz / dist
+    phi = np.arctan2(dy, dx)
+    theta = np.arccos(np.clip(nz, -1, 1))
+    et = [np.cos(phi) * np.cos(theta), np.sin(phi) * np.cos(theta), -np.sin(theta)]
+    ep = [-np.sin(phi), np.cos(phi), np.zeros_like(phi)]
+    seeds = (np.random.uniform(0, 1, (l, l, l)) > (1 - seed_density)).astype(np.float32)
+
+    def advect_fibers(flow, mask, n_steps):
+        active_seeds = seeds * mask
+        acc = np.copy(active_seeds)
+        dt = 0.8
+        for d in [1, -1]:
+            cz, cy, cx = z.astype(float), y.astype(float), x.astype(float)
+            for _ in range(n_steps):
+                cx += d * dt * flow[0]
+                cy += d * dt * flow[1]
+                cz += d * dt * flow[2]
+                acc += map_coordinates(active_seeds, [cz, cy, cx], order=1, mode='constant', cval=0)
+        res = np.zeros_like(acc)
+        res[mask] = acc[mask]
+        return res
+
+    if do_inner:
+        print(">> Calculating Tetrahedral Ground State (Tennis Ball)...")
+        s = 1 / np.sqrt(3)
+        pts = [
+            np.array([s, s, s]),
+            np.array([s, -s, -s]),
+            np.array([-s, s, -s]),
+            np.array([-s, -s, s])
+        ]
+        v_sum_x = np.zeros_like(dx)
+        v_sum_y = np.zeros_like(dx)
+        for p in pts:
+            v_vec = [nx - p[0], ny - p[1], nz - p[2]]
+            v_t = v_vec[0] * et[0] + v_vec[1] * et[1] + v_vec[2] * et[2]
+            v_p = v_vec[0] * ep[0] + v_vec[1] * ep[1] + v_vec[2] * ep[2]
+            v_mag = np.sqrt(v_t ** 2 + v_p ** 2 + 1e-9)
+            v_sum_x += v_t / v_mag
+            v_sum_y += v_p / v_mag
+        inner_angle = 0.5 * np.arctan2(v_sum_y, v_sum_x)
+        flow_in = [et[0] * np.cos(inner_angle) + ep[0] * np.sin(inner_angle),
+                   et[1] * np.cos(inner_angle) + ep[1] * np.sin(inner_angle),
+                   et[2] * np.cos(inner_angle) + ep[2] * np.sin(inner_angle)]
+        inner_mask = (dist >= r_inner - dr) & (dist <= r_inner + dr)
+        vol += advect_fibers(flow_in, inner_mask, steps) * 180
+        vol[inner_mask] += 40
+
+    if do_outer:
+        print(">> Calculating Outer Asters...")
+        flow_out = [et[0], et[1], et[2]]
+        outer_mask = (dist >= r_outer - dr) & (dist <= r_outer + dr)
+        vol += advect_fibers(flow_out, outer_mask, steps) * 180
+        vol[outer_mask] += 40
+    vol = gaussian_filter(vol, sigma=0.5)
+    print(f">> Benchmark saved successfully.")
+    return vol

@@ -288,6 +288,7 @@ def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, sa
               bins=None, hidefig=False):
     plt.figure(figsize=figsize)
     plt.title(title)
+    plt.grid(True)
     if bins is not None:
         plt.hist(array, density=density, bins=bins)
     else:
@@ -295,7 +296,6 @@ def plot_hist(array, ylabel="Frequency", title="", figsize=(4, 3), xlim=None, sa
     if xlim is not None:
         plt.xlim(xlim[0], xlim[1])
     plt.ylabel(ylabel)
-    plt.grid(True)
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -1225,6 +1225,15 @@ def plot_qsphi_profile_evolution(time_points_all, s_bin_centers_all, q_mean_all_
 #####################
 # 3D RENDER MODULES #
 #####################
+
+def initialise_viewer():
+    viewer = napari.Viewer()
+    viewer.dims.ndisplay = 3
+    viewer.scale_bar.visible = True
+    viewer.axes.visible = True
+    return viewer
+
+
 def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=None):
     print(">> Rendering image...")
     if opacity_list is None:
@@ -1239,11 +1248,12 @@ def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=Non
         scale_list = scale
     else:
         scale_list = [(1, 1, 1) for _ in range(len(img_list))]
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
+
     for i, img in enumerate(img_list):
         viewer.add_image(img, name=title_list[i], colormap=color_list[i], rendering="mip", scale=scale_list[i], opacity=
         opacity_list[i])
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1251,7 +1261,7 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
               img_cmap="green", scale=(1, 1, 1), vec_edge_width=None, vec_length=1, img_opacity=0.4,
               hide_vectors=True):
     print(">> Rendering mesh...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=img_cmap, rendering="mip", scale=scale, opacity=img_opacity)
 
@@ -1273,14 +1283,14 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
                 edge_color=mesh_colors[i], edge_width=vec_edge_width,
                 length=vec_length, opacity=1.0, name=f"{mesh_titles[i]}_normals"
             )
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
 def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="opaque",
                        shading="none", opacity=0.2, use_orig_color=True):
     print(">> Rendering colored vertices...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale)
     if use_orig_color:
@@ -1290,7 +1300,7 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
         colors_mapped[:, 1] = colors
     viewer.add_points(verts, name='Mesh', shading=shading, opacity=opacity, blending=blending,
                       face_color=colors_mapped, border_color=colors_mapped, size=ptsize)
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1310,7 +1320,7 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity
     if color_override is not None:
         vert_colors = color_override.copy()
         vert_colors[:, 3] = 1.0
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
         mesh_opacity *= 0.8
@@ -1321,7 +1331,7 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     if add_hidden_vector:
         viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1340,7 +1350,7 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
     if mesh_blending_list is None:
         mesh_blending_list = ["opaque" for _ in range(len(mesh_list))]
     print(">> Rendering colored mesh...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
     for mesh, vert_colors, color_override, name, opacity, blending in zip(mesh_list, vert_colors_list,
@@ -1366,7 +1376,7 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     if add_hidden_vector:
         viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1374,7 +1384,7 @@ def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=
                          vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
                          vector_style="line", img=None, scale=None, img_opacity=0.5):
     print(">> Rendering 3D vector field...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * length
     centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * length
     centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * length
@@ -1399,7 +1409,7 @@ def view_3d_vector_field(vec_pos, vec_dir, vec_colors, verts=None, verts_colors=
         opacity=vec_opacity,
         vector_style=vector_style
     )
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1408,7 +1418,7 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
                                   vector_style="line", img=None, scale=None, img_opacity=0.5, mesh=None,
                                   mesh_shading="flat", mesh_blending="opaque", centered_directors=True, vec_names=None):
     print(">> Rendering 3D vector field...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None and scale is not None:
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip")
     if mesh is not None:
@@ -1442,7 +1452,7 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
             vector_style=vector_style,
             name=vec_names[i]
         )
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
@@ -1469,7 +1479,7 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
 
     if vec_edge_width is None:
         vec_edge_width = vec_length / 8
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None and scale is not None:
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip", colormap="green")
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=mesh_vert_colors, shading=mesh_shading,
@@ -1478,6 +1488,7 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
     centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * vec_length
     centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * vec_length
     centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+
     viewer.add_vectors(
         data=np.stack((centered_pos, vec_dir), axis=1),
         edge_color=vec_colors,
@@ -1486,6 +1497,16 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
         opacity=vec_opacity,
         vector_style=vector_style
     )
+    #
+    # viewer.add_vectors(
+    #     data=np.stack((centered_pos, vec_dir), axis=1),
+    #     edge_color="red",
+    #     edge_width=vec_edge_width,
+    #     length=vec_length,
+    #     opacity=vec_opacity,
+    #     vector_style=vector_style
+    # )
+
     if markers is not None:
         if type(marker_colors) != str:
             marker_colors = np.array(
@@ -1500,14 +1521,14 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
             edge_color=marker_vectors_color, edge_width=marker_vector_width,
             length=marker_vectors_length, vector_style="arrow"
         )
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
 def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, img=None, ptsize=2, cmap_img="green",
                                 blending="opaque", shading="none", opacity=0.2, use_orig_color=True):
     print(">> Rendering colored vertices...")
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale)
     if use_orig_color:
@@ -1522,14 +1543,14 @@ def view_colored_verts_multiple(verts1, colors1, verts2, colors2, scale=None, im
                       face_color=colors_mapped1, border_color=colors_mapped1, size=ptsize)
     viewer.add_points(verts2, name='Mesh2', shading=shading, opacity=opacity, blending=blending,
                       face_color=colors_mapped2, border_color=colors_mapped2, size=ptsize)
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
 
 
 def view_colored_labels_3d(segmentation_3d, scale, img=None, img_opacity=0.5):
-    viewer = napari.Viewer()
+    viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, scale=scale, opacity=img_opacity)
     viewer.add_labels(segmentation_3d, name='segmentation', scale=scale)
-    viewer.dims.ndisplay = 3
+    viewer.dims.axis_labels = ("Z", "Y", "X")
     napari.run()
