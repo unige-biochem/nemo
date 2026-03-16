@@ -19,7 +19,7 @@ from skimage.morphology import skeletonize_3d, medial_axis
 from sklearn.decomposition import PCA
 
 from scripts.analysis import coord_search_radius, avg_tan_nem_tens
-from scripts.datahandler import create_resdirs, load_mesh, load_array
+from scripts.datahandler import create_resdirs, load_mesh, load_array, save_array
 from scripts.visuals import plot_qsphi_profiles, plot_qsphi_profiles_separated_phi, plot_scatter, plot_rho_profile, \
     plot_cylindrical_projection, plot_s_sphi_profile
 
@@ -42,46 +42,22 @@ def skeletonise_mesh(mesh, voxel_size):
     return skel_coords, voxelized_grid
 
 
-# def order_points_along_path(points, start_idx=None):
-#     points = np.asarray(points)
-#     tree = KDTree(points)
-#     N = len(points)
-#     ordered = np.zeros(N, dtype=int)
-#     used = np.zeros(N, dtype=bool)
-#
-#     if start_idx is None:
-#         start_idx = np.unravel_index(np.argmin(points), points.shape)[0]
-#
-#     ordered[0] = start_idx
-#     used[start_idx] = True
-#     curr = start_idx
-#
-#     for i in range(1, N):
-#         _, idx = tree.query(points[curr], k=N)
-#         next_idx = next(j for j in idx if not used[j])
-#         ordered[i] = next_idx
-#         used[next_idx] = True
-#         curr = next_idx
-#
-#     return points[ordered]
-
-
 def order_line_points(points, start_idx=None, neigh_k=6):
-    P = np.asarray(points)
-    N = len(P)
-    tree = KDTree(P)
+    p = np.asarray(points)
+    n = len(p)
+    tree = KDTree(p)
 
     if start_idx is None:
-        start_idx = np.argmin(P[:, 2])
+        start_idx = np.argmin(p[:, 2])
 
     ordered = [start_idx]
-    used = np.zeros(N, dtype=bool)
+    used = np.zeros(n, dtype=bool)
     used[start_idx] = True
 
     curr = start_idx
 
-    for _ in range(N - 1):
-        dists, idxs = tree.query(P[curr], k=neigh_k)
+    for _ in range(n - 1):
+        dists, idxs = tree.query(p[curr], k=neigh_k)
         next_idx = next((i for i in idxs if not used[i]), None)
         if next_idx is None:
             break
@@ -91,11 +67,11 @@ def order_line_points(points, start_idx=None, neigh_k=6):
     if not all(used):
         unused = np.where(~used)[0]
         for u in unused:
-            dists = np.linalg.norm(P[ordered] - P[u], axis=1)
+            dists = np.linalg.norm(p[ordered] - p[u], axis=1)
             insert_at = np.argmin(dists)
             ordered.insert(insert_at, u)
 
-    return P[ordered]
+    return p[ordered]
 
 
 def reparametrize_curve_by_curvature(curve, smooth=0.1):
@@ -142,6 +118,7 @@ def pca_axis_line_extend_inside_mesh(mesh, num_points=100, oversample=1000):
     pca = PCA(n_components=3)
     pca.fit(vertices)
     axis = pca.components_[0]
+    axis[0] = 0.0
     axis /= np.linalg.norm(axis)
     projections = (vertices - centroid) @ axis
     t_min = projections.min()
@@ -163,44 +140,56 @@ def cylindrical_along_curve(points, curve):
     print(f">> Performing cylindrical projection along curve for {len(points)} vertices!")
     points = np.asarray(points)
     curve = np.asarray(curve)
+
+    # 1. Compute tangents
     tangents = np.gradient(curve, axis=0)
     tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
     tangents[0] = tangents[1]
     tangents[-1] = tangents[-2]
-    dt = np.gradient(tangents, axis=0)
-    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
-    small_dt_mask = dt_norm[:, 0] < 1e-12
-    if np.all(small_dt_mask):
-        ref = np.array([0, 0, 1])
-        print(f"[!] Warning: entire curve has near-zero curvature; using arbitrary perpendicular vector {ref}!")
-        if np.abs(np.dot(ref, tangents[0])) > 0.99:
-            ref = np.array([0, 1, 0])
-        dt[:] = np.cross(tangents, ref)
-        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
-    else:
-        print(
-            f"[!] Warning: {np.sum(small_dt_mask)} point(s) along the curve have near-zero curvature; using nearest valid vector instead!")
-        valid_idx = np.where(~small_dt_mask)[0]
-        for i in np.where(small_dt_mask)[0]:
-            nearest = valid_idx[np.argmin(np.abs(valid_idx - i))]
-            dt[i] = dt[nearest]
-        dt /= np.linalg.norm(dt, axis=1, keepdims=True)
-    dt_norm = np.linalg.norm(dt, axis=1, keepdims=True)
-    dt /= dt_norm
-    dt[0] = dt[1]
-    dt[-1] = dt[-2]
+
+    # 2. Create a "Z-up" reference frame instead of a curvature-based one
+    z_up = np.array([-1.0, 0.0, 0.0])
+
+    # Project global Z onto the plane perpendicular to the tangent: u = Z - (Z.t)*t
+    # Z.t is just the z-component of the tangent
+    dot_z_t = tangents[:, 2:3]
+    u = z_up - dot_z_t * tangents
+    u_norm = np.linalg.norm(u, axis=1, keepdims=True)
+
+    # Fallback: if the curve goes straight up/down, Z-projection is zero.
+    # # We use +Y as a fallback "top" for those specific points.
+    # vertical_mask = (u_norm[:, 0] < 1e-6)
+    # if np.any(vertical_mask):
+    #     print(f"[!] Warning: {np.sum(vertical_mask)} point(s) are perfectly vertical; using +y as local 'top'.")
+    #     Y = np.array([0.0, 1.0, 0.0])
+    #     fallback_u = Y - tangents[vertical_mask, 1:2] * tangents[vertical_mask]
+    #     fallback_u /= np.linalg.norm(fallback_u, axis=1, keepdims=True)
+    #     u[vertical_mask] = fallback_u
+    #     u_norm[vertical_mask] = 1.0
+
+    u /= u_norm  # 'u' is now our normal vector, ALWAYS pointing as close to +Z as possible
+    v = np.cross(tangents, u)  # 'v' completes the orthonormal basis (our new binormal)
+
+    # 3. Curve path length (s)
     ds = np.linalg.norm(np.diff(curve, axis=0), axis=1)
     s_curve = np.concatenate([[0], np.cumsum(ds)])
+
+    # 4. Map points to the closest point on the curve
     tree = KDTree(curve)
     _, idx = tree.query(points)
     closest = curve[idx]
-    tangent = tangents[idx]
-    normal = dt[idx]
-    binormal = np.cross(tangent, normal)
+
     vec = points - closest
     rho = np.linalg.norm(vec, axis=1)
-    phi = np.arctan2(np.sum(vec * binormal, axis=1), np.sum(vec * normal, axis=1))
+
+    # 5. Compute phi using the new Z-up frame
+    u_mapped = u[idx]
+    v_mapped = v[idx]
+
+    # phi is 0 exactly when 'vec' aligns with 'u' (the Z-projected vector)
+    phi = np.arctan2(np.sum(vec * v_mapped, axis=1), np.sum(vec * u_mapped, axis=1))
     s = s_curve[idx]
+
     return s, rho, phi
 
 
@@ -227,22 +216,22 @@ def create_s_phi_basis(points, curve, normals):
 
 
 def decompose_q_sphi(q_sphi, s_coords, num_bins=50):
-    Q_ss = q_sphi[:, 0, 0]
-    Q_phiphi = q_sphi[:, 1, 1]
-    Q_sphi = q_sphi[:, 0, 1]
+    q_ss = q_sphi[:, 0, 0]
+    q_phiphi = q_sphi[:, 1, 1]
+    q_sphi = q_sphi[:, 0, 1]
     s_bins = np.linspace(s_coords.min(), s_coords.max(), num_bins)
     s_bin_centers = 0.5 * (s_bins[:-1] + s_bins[1:])
-    Q_ss_mean = np.zeros(num_bins - 1)
-    Q_phiphi_mean = np.zeros(num_bins - 1)
-    Q_sphi_mean = np.zeros(num_bins - 1)
+    q_ss_mean = np.zeros(num_bins - 1)
+    q_phiphi_mean = np.zeros(num_bins - 1)
+    q_sphi_mean = np.zeros(num_bins - 1)
 
     for i in range(num_bins - 1):
         mask = (s_coords >= s_bins[i]) & (s_coords < s_bins[i + 1])
         if mask.any():
-            Q_ss_mean[i] = Q_ss[mask].mean()
-            Q_phiphi_mean[i] = Q_phiphi[mask].mean()
-            Q_sphi_mean[i] = Q_sphi[mask].mean()
-    return s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean
+            q_ss_mean[i] = q_ss[mask].mean()
+            q_phiphi_mean[i] = q_phiphi[mask].mean()
+            q_sphi_mean[i] = q_sphi[mask].mean()
+    return s_bin_centers, q_ss, q_ss_mean, q_phiphi, q_phiphi_mean, q_sphi, q_sphi_mean
 
 
 def shift_angle_periodic(angle, angle_zerobase):
@@ -272,21 +261,22 @@ def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
 
 
 def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi=-np.pi / 3, high_cutoff_phi=np.pi / 3,
-                     profile_bins=30, phi_new_zero_shift=None, hidefig=True):
+                     profile_bins=30, hidefig=True, img_unit="um"):
     print(f"Selected image path: {img_path}")
     if not os.path.exists(img_path):
         print(f"Image path does not exist: {img_path} !")
         return None
-    img_unit = "um"
     # ==== Create Folder Structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path)
+
     # ==== Load Projected Result ====
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     proj_layer = load_array("intensities", folderpath=resdata_dir_layer)
     proj_layer /= proj_layer.max()
-    layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"), recalc_normals=False,
-                           clean=False)
+    layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"),
+                           recalc_normals=False, clean=False)
+
     # ==== Load 2D+ Directors ====
     idxs_sel = load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
     directors_2dcurved = load_array("directors_2dcurved", folderpath=resdata_dir_layer)
@@ -294,60 +284,90 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
     centerline_fitted = load_array(name="3d_midline_curve", folderpath=os.path.join(resdata_dir))
     dir_coords = cylindrical_along_curve(points=directors_2dcurved[:, :3], curve=centerline_fitted)
     dir_s, dir_rho, dir_phi = dir_coords
-    mesh_coords = cylindrical_along_curve(points=layer_mesh.vertices, curve=centerline_fitted)
-    mesh_s, mesh_rho, mesh_phi = mesh_coords
+    save_array(np.column_stack((dir_s, dir_rho, dir_phi)), name="dir_s-rho-phi",
+               header="s,rho,phi", folderpath=resdata_dir_layer)
+    layer_mesh_coords = cylindrical_along_curve(points=layer_mesh.vertices, curve=centerline_fitted)
+    layer_mesh_s, layer_mesh_rho, layer_mesh_phi = layer_mesh_coords
+    save_array(np.column_stack((layer_mesh_s, layer_mesh_rho, layer_mesh_phi)), name="layer_mesh_s-rho-phi",
+               header="s,rho,phi", folderpath=resdata_dir_layer)
 
-    phi_new_zero = find_phi_intensity_max(phi_vals=mesh_phi, intensity_vals=proj_layer)
-    if phi_new_zero_shift is not None:
-        phi_new_zero += phi_new_zero_shift
-    mesh_phi = shift_angle_periodic(angle=mesh_phi, angle_zerobase=phi_new_zero)
-    dir_phi = shift_angle_periodic(angle=dir_phi, angle_zerobase=phi_new_zero)
-    plot_scatter(x=mesh_phi, y=proj_layer, title="Projection Intensity vs. Angle", xlabel=r"$\phi$ (rad)",
+    # phi_new_zero = find_phi_intensity_max(phi_vals=layer_mesh_phi, intensity_vals=proj_layer)
+    # if phi_new_zero_shift is not None:
+    #     phi_new_zero += phi_new_zero_shift
+    # layer_mesh_phi = shift_angle_periodic(angle=layer_mesh_phi, angle_zerobase=phi_new_zero)
+    # dir_phi = shift_angle_periodic(angle=dir_phi, angle_zerobase=phi_new_zero)
+    plot_scatter(x=layer_mesh_phi, y=proj_layer, title="Projection Intensity vs. Angle", xlabel=r"$\phi$ (rad)",
                  ylabel="Projection Intensity (a.u.)", xlim=[-np.pi, np.pi], hidefig=hidefig,
                  vert_line=[low_cutoff_phi, high_cutoff_phi],
                  savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.png"))
 
-    plot_cylindrical_projection(phi=mesh_phi, rho=mesh_rho, s=mesh_s, colors=proj_layer, aspect="equal",
+    plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer,
+                                aspect="equal",
                                 hidefig=hidefig,
                                 title=f"Projected Intensities \n{layer_label}", hexsize=300, cmap="inferno",
                                 savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.png"))
-    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit, hidefig=hidefig,
+    plot_rho_profile(mesh_s=layer_mesh_s, mesh_rho=layer_mesh_rho, mesh_phi=layer_mesh_phi,
+                     img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}.png"))
 
     e_s, e_phi, e_rho = create_s_phi_basis(points=directors_2dcurved[:, :3], curve=centerline_fitted,
                                            normals=layer_mesh.vertex_normals[idxs_sel])
+    save_array(e_s, name="dir_e_s",
+               header="x,y,z", folderpath=resdata_dir_layer)
+    save_array(e_phi, name="dir_e_phi",
+               header="x,y,z", folderpath=resdata_dir_layer)
+    save_array(e_rho, name="dir_e_rho",
+               header="x,y,z", folderpath=resdata_dir_layer)
 
-    mesh_s = crop_by_angles(values=mesh_s, angles=mesh_phi, angle_low_cutoff=low_cutoff_phi,
-                            angle_high_cutoff=high_cutoff_phi)
-    mesh_rho = crop_by_angles(values=mesh_rho, angles=mesh_phi, angle_low_cutoff=low_cutoff_phi,
-                              angle_high_cutoff=high_cutoff_phi)
-    proj_layer = crop_by_angles(values=proj_layer, angles=mesh_phi, angle_low_cutoff=low_cutoff_phi,
-                                angle_high_cutoff=high_cutoff_phi)
-    mesh_phi = crop_by_angles(values=mesh_phi, angles=mesh_phi, angle_low_cutoff=low_cutoff_phi,
-                              angle_high_cutoff=high_cutoff_phi)
-    mesh_coords = (mesh_s, mesh_rho, mesh_phi)
-    dir_s = crop_by_angles(values=dir_s, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-                           angle_high_cutoff=high_cutoff_phi)
-    dir_rho = crop_by_angles(values=dir_rho, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-                             angle_high_cutoff=high_cutoff_phi)
-    e_s = crop_by_angles(values=e_s, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-                         angle_high_cutoff=high_cutoff_phi)
-    e_phi = crop_by_angles(values=e_phi, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-                           angle_high_cutoff=high_cutoff_phi)
-    # e_rho = crop_by_angles(values=e_rho, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-    #                                 angle_high_cutoff=high_cutoff_phi)
-    directors_2dcurved = crop_by_angles(values=directors_2dcurved, angles=dir_phi,
-                                        angle_low_cutoff=low_cutoff_phi,
+    layer_mesh_s_cropped = crop_by_angles(values=layer_mesh_s, angles=layer_mesh_phi, angle_low_cutoff=low_cutoff_phi,
+                                          angle_high_cutoff=high_cutoff_phi)
+    layer_mesh_rho_cropped = crop_by_angles(values=layer_mesh_rho, angles=layer_mesh_phi,
+                                            angle_low_cutoff=low_cutoff_phi,
+                                            angle_high_cutoff=high_cutoff_phi)
+    layer_mesh_phi_cropped = crop_by_angles(values=layer_mesh_phi, angles=layer_mesh_phi,
+                                            angle_low_cutoff=low_cutoff_phi,
+                                            angle_high_cutoff=high_cutoff_phi)
+    save_array(np.column_stack((layer_mesh_s_cropped, layer_mesh_rho_cropped, layer_mesh_phi_cropped)),
+               name="layer_mesh_s-rho-phi_cropped",
+               header="s,rho,phi", folderpath=resdata_dir_layer)
+    proj_layer_cropped = crop_by_angles(values=proj_layer, angles=layer_mesh_phi, angle_low_cutoff=low_cutoff_phi,
                                         angle_high_cutoff=high_cutoff_phi)
-    dir_phi = crop_by_angles(values=dir_phi, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
-                             angle_high_cutoff=high_cutoff_phi)
-    dir_coords = (dir_s, dir_rho, dir_phi)
+    save_array(proj_layer_cropped, name="intensities_cropped", header="I", folderpath=resdata_dir_layer)
+    dir_s_cropped = crop_by_angles(values=dir_s, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                   angle_high_cutoff=high_cutoff_phi)
+    dir_rho_cropped = crop_by_angles(values=dir_rho, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                     angle_high_cutoff=high_cutoff_phi)
+    dir_phi_cropped = crop_by_angles(values=dir_phi, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                     angle_high_cutoff=high_cutoff_phi)
+    save_array(np.column_stack((dir_s_cropped, dir_rho_cropped, dir_phi_cropped)),
+               name="dir_s-rho-phi_cropped",
+               header="s,rho,phi", folderpath=resdata_dir_layer)
 
-    plot_cylindrical_projection(phi=mesh_phi, rho=mesh_rho, s=mesh_s, colors=proj_layer, aspect="equal",
+    e_s_cropped = crop_by_angles(values=e_s, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                 angle_high_cutoff=high_cutoff_phi)
+    e_rho_cropped = crop_by_angles(values=e_rho, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                   angle_high_cutoff=high_cutoff_phi)
+    e_phi_cropped = crop_by_angles(values=e_phi, angles=dir_phi, angle_low_cutoff=low_cutoff_phi,
+                                   angle_high_cutoff=high_cutoff_phi)
+    save_array(e_s_cropped, name="dir_e_s_cropped",
+               header="x,y,z", folderpath=resdata_dir_layer)
+    save_array(e_phi_cropped, name="dir_e_phi_cropped",
+               header="x,y,z", folderpath=resdata_dir_layer)
+    save_array(e_rho_cropped, name="dir_e_rho_cropped",
+               header="x,y,z", folderpath=resdata_dir_layer)
+    directors_2dcurved_cropped = crop_by_angles(values=directors_2dcurved, angles=dir_phi,
+                                                angle_low_cutoff=low_cutoff_phi,
+                                                angle_high_cutoff=high_cutoff_phi)
+    save_array(directors_2dcurved_cropped, "directors_2dcurved_cropped", header="x,y,z,vx,vy,vz",
+               folderpath=resdata_dir_layer)
+    plot_cylindrical_projection(phi=layer_mesh_phi_cropped, rho=layer_mesh_rho_cropped, s=layer_mesh_s_cropped,
+                                colors=proj_layer_cropped,
+                                aspect="equal",
                                 title=f"Cropped Projected Intensities \n{layer_label}", hexsize=300,
                                 cmap="inferno", figsize=(10, 5), hidefig=hidefig,
                                 savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.png"))
-    plot_rho_profile(mesh_s=mesh_s, mesh_rho=mesh_rho, mesh_phi=mesh_phi, img_unit=img_unit, hidefig=hidefig,
+    plot_rho_profile(mesh_s=layer_mesh_s_cropped, mesh_rho=layer_mesh_rho_cropped, mesh_phi=layer_mesh_phi_cropped,
+                     img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}_cropped.png"))
 
     # ==== Tune Curved Nematic Analysis Number of Neighbours ====
@@ -356,60 +376,90 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
     patch_size = patch_avg[1]
 
     # ==== Tune Plotting parameters ====
-    veccoords = directors_2dcurved[:, :3]
     if patch_type == "radius":
-        neigh_idxs = coord_search_radius(veccoords, r=patch_size)
+        patch_label = f"r-{patch_size}{img_unit}"
+        neigh_idxs = coord_search_radius(directors_2dcurved_cropped[:, :3], r=patch_size)
     elif patch_type == "nearest":
-        neigh_idxs = coord_search_neighbours(veccoords, k=patch_size, n_process=8)
+        patch_label = f"k-{patch_size}"
+        neigh_idxs = coord_search_neighbours(directors_2dcurved_cropped[:, :3], k=patch_size, n_process=8)
     else:
         neigh_idxs = None
+        patch_label = None
         print(f"[!] Unknown patch type: {patch_type}")
 
     # ==== Calculate Curved Nematic Order ====
-    S_2dcurv_sphi, n_avg_2dcurv_sphi, q_sphi = avg_tan_nem_tens(t1_cov=e_s, t2_cov=e_phi,
-                                                                directors=directors_2dcurved,
-                                                                neigh_idxs=neigh_idxs, return_qij_bar=True)
+    s_2dcurv_sphi_cropped, n_avg_2dcurv_sphi_cropped, q_sphi_full_cropped = avg_tan_nem_tens(t1_cov=e_s_cropped,
+                                                                                             t2_cov=e_phi_cropped,
+                                                                                             directors=directors_2dcurved_cropped,
+                                                                                             neigh_idxs=neigh_idxs,
+                                                                                             return_qij_bar=True)
+
+    save_array(s_2dcurv_sphi_cropped, name=f"s_2dcurv_sphi_cropped_{patch_label}", header="S",
+               folderpath=resdata_dir_layer)
+    save_array(np.column_stack((directors_2dcurved_cropped[:, :3], n_avg_2dcurv_sphi_cropped)),
+               name=f"n_avg_2dcurv_sphi_cropped_{patch_label}",
+               header="x,y,z,vx,vy,vz", folderpath=resdata_dir_layer)
+    np.savez(os.path.join(resdata_dir_layer, f"q_sphi_full_cropped_{patch_label}"), q_sphi_cropped=q_sphi_full_cropped)
 
     # ==== Plot Curved Nematic Order ====
-    q_sphi_decomposition = decompose_q_sphi(q_sphi=q_sphi, s_coords=dir_s, num_bins=profile_bins)
-    s_bin_centers, Q_ss, Q_ss_mean, Q_phiphi, Q_phiphi_mean, Q_sphi, Q_sphi_mean = q_sphi_decomposition
+    q_sphi_decomposition = decompose_q_sphi(q_sphi=q_sphi_full_cropped, s_coords=dir_s_cropped, num_bins=profile_bins)
+    s_bin_centers_cropped, q_ss_cropped, q_ss_mean_cropped, q_phiphi_cropped, q_phiphi_mean_cropped, q_sphi_cropped, q_sphi_mean_cropped = q_sphi_decomposition
+    save_array(s_bin_centers_cropped, name=f"s_bin_centers_cropped_{patch_label}", header="s",
+               folderpath=resdata_dir_layer)
+    save_array(q_ss_cropped, name=f"q_ss_cropped_{patch_label}", header="q_ss",
+               folderpath=resdata_dir_layer)
+    save_array(q_ss_mean_cropped, name=f"q_ss_mean_cropped_{patch_label}", header="q_ss",
+               folderpath=resdata_dir_layer)
 
-    plot_qsphi_profiles(dir_s=dir_s, s_bin_centers=s_bin_centers, Q_ss=Q_ss,
-                        Q_ss_mean=Q_ss_mean, Q_phiphi=Q_phiphi,
-                        Q_phiphi_mean=Q_phiphi_mean, Q_sphi=Q_sphi, Q_sphi_mean=Q_sphi_mean,
+    save_array(q_phiphi_cropped, name=f"q_phiphi_cropped_{patch_label}", header="q_phiphi",
+               folderpath=resdata_dir_layer)
+
+    save_array(q_phiphi_mean_cropped, name=f"q_phiphi_mean_cropped_{patch_label}", header="q_phiphi",
+               folderpath=resdata_dir_layer)
+
+    save_array(q_sphi_cropped, name=f"q_sphi_cropped_{patch_label}", header="q_sphi",
+               folderpath=resdata_dir_layer)
+    save_array(q_sphi_mean_cropped, name=f"q_sphi_mean_cropped_{patch_label}", header="q_sphi",
+               folderpath=resdata_dir_layer)
+
+    plot_qsphi_profiles(dir_s=dir_s_cropped, s_bin_centers=s_bin_centers_cropped, Q_ss=q_ss_cropped,
+                        Q_ss_mean=q_ss_mean_cropped, Q_phiphi=q_phiphi_cropped,
+                        Q_phiphi_mean=q_phiphi_mean_cropped, Q_sphi=q_sphi_cropped, Q_sphi_mean=q_sphi_mean_cropped,
                         y_limits=[-0.5, 0.5], hidefig=hidefig,
-                        savefig=os.path.join(resfig_dir_layer, f"q-sphi-profile-{img_unit}.png"))
+                        savefig=os.path.join(resfig_dir_layer, f"q-sphi-profile-{img_unit}_cropped.png"))
 
-    plot_qsphi_profiles_separated_phi(dir_s=dir_s, dir_phi=dir_phi, s_bin_centers=s_bin_centers, Q_ss=Q_ss,
-                                      Q_ss_mean=Q_ss_mean, Q_phiphi=Q_phiphi, hidefig=hidefig,
-                                      Q_phiphi_mean=Q_phiphi_mean, Q_sphi=Q_sphi, Q_sphi_mean=Q_sphi_mean,
+    plot_qsphi_profiles_separated_phi(dir_s=dir_s_cropped, dir_phi=dir_phi_cropped, s_bin_centers=s_bin_centers_cropped,
+                                      Q_ss=q_ss_cropped,
+                                      Q_ss_mean=q_ss_mean_cropped, Q_phiphi=q_phiphi_cropped, hidefig=hidefig,
+                                      Q_phiphi_mean=q_phiphi_mean_cropped, Q_sphi=q_sphi_cropped,
+                                      Q_sphi_mean=q_sphi_mean_cropped,
                                       y_limits=[-0.5, 0.5], savefig=os.path.join(resfig_dir_layer,
-                                                                                 f"q-sphi-by-phi-profile-{img_unit}.png"))
+                                                                                 f"q-sphi-by-phi-profile-{img_unit}_cropped.png"))
 
-    plot_s_sphi_profile(dir_s=dir_s, s_global=S_2dcurv_sphi, y_limits=[0, 1],
-                        savefig=os.path.join(resfig_dir_layer, f"S-profile-{img_unit}.png"))
-    return mesh_coords, dir_coords, q_sphi_decomposition
+    plot_s_sphi_profile(dir_s=dir_s_cropped, s_global=s_2dcurv_sphi_cropped, y_limits=[0, 1], hidefig=hidefig,
+                        savefig=os.path.join(resfig_dir_layer, f"S-profile-{img_unit}_cropped.png"))
+    return None
 
 
 def bin_directors(directors, ap_par_binned_idxs, ap_orth_binned_idxs, curve,
                   nematic_weights):
-    ap_par_binned_S_2d, ap_par_binned_n_2d = avg_2d_nem_tens(directors=directors,
+    ap_par_binned_s_2d, ap_par_binned_n_2d = avg_2d_nem_tens(directors=directors,
                                                              neigh_idxs=ap_par_binned_idxs,
                                                              weights=nematic_weights)
-    ap_orth_binned_S_2d, ap_orth_binned_n_2d = avg_2d_nem_tens(directors=directors,
+    ap_orth_binned_s_2d, ap_orth_binned_n_2d = avg_2d_nem_tens(directors=directors,
                                                                neigh_idxs=ap_orth_binned_idxs,
                                                                weights=nematic_weights)
-    ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
+    ap_par_binned_s_2d_unw, ap_par_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
                                                                      neigh_idxs=ap_par_binned_idxs,
                                                                      weights=None)
-    ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
+    ap_orth_binned_s_2d_unw, ap_orth_binned_n_2d_unw = avg_2d_nem_tens(directors=directors,
                                                                        neigh_idxs=ap_orth_binned_idxs,
                                                                        weights=None)
 
-    nematic_results = (ap_par_binned_S_2d, ap_par_binned_n_2d,
-                       ap_orth_binned_S_2d, ap_orth_binned_n_2d)
-    nematic_results_unweighted = (ap_par_binned_S_2d_unw, ap_par_binned_n_2d_unw,
-                                  ap_orth_binned_S_2d_unw, ap_orth_binned_n_2d_unw)
+    nematic_results = (ap_par_binned_s_2d, ap_par_binned_n_2d,
+                       ap_orth_binned_s_2d, ap_orth_binned_n_2d)
+    nematic_results_unweighted = (ap_par_binned_s_2d_unw, ap_par_binned_n_2d_unw,
+                                  ap_orth_binned_s_2d_unw, ap_orth_binned_n_2d_unw)
     ap_par_binned_dirs = []
     ap_orth_binned_dirs = []
     s_par_orthogonality = []
