@@ -82,15 +82,12 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
                    savefig=os.path.join(resfig_dir,
                                         f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.pdf"),
                    hidefig=hidefig)
-    rotation_angles = [1, 1, 1]
     plotted_vecfields = np.concatenate((field_2, field_1), axis=0)
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=plotted_vecfields[:, :3],
-                                                     rotate=rotation_angles)
+    sph_proj_phi, sph_proj_theta = spherical_project(pts=plotted_vecfields[:, :3])
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(plotted_vecfields[:, :3],
-                                                           plotted_vecfields[:, 3:],
-                                                           rotate=rotation_angles)
+                                                           plotted_vecfields[:, 3:])
     plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
-                              cmap="Greys_r", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
+                              cmap="Greys", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
                               vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
                               veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
                               vec_manual_vminmax=[0, 1], vec_cmap="coolwarm", vec_cmap_label="criss cross magnitude",

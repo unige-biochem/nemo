@@ -91,7 +91,7 @@ def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k,
     save_array(full_c_mean, f"{mesh_name}_mean_curv_{patch_label}", header=f"mean (1/{img_unit})",
                folderpath=resdata_dir)
     curv_full_save_path = os.path.join(resdata_dir, f"{mesh_name}_full_curv_{patch_label}.npz")
-    np.savez(curv_full_save_path, C_tensors=c_tensors,
+    np.savez_compressed(curv_full_save_path, C_tensors=c_tensors,
              C_tensors_mixed=c_tensors_mixed, tensor_idxs=tensor_idxs)
     print(f"Saved curvature results to {curv_full_save_path} !")
 

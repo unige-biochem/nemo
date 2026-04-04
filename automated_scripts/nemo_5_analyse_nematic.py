@@ -94,7 +94,7 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
         print(f"[!] Unknown patch type: {patch_type}")
         return None
 
-    np.savez(os.path.join(resdata_dir_layer, f"{nematic_avg_label}_idxs_neigh.npz"),
+    np.savez_compressed(os.path.join(resdata_dir_layer, f"{nematic_avg_label}_idxs_neigh.npz"),
              idxs_neigh=np.asarray(idxs_neigh, dtype=object))
 
     # ==== Calculate Curved Nematic Order ====

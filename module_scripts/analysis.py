@@ -1248,6 +1248,7 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
                                              normals=mesh.vertex_normals, debug=debug,
                                              correct_orientation=correct_orientation)
     m_charge = m_line_charge + m_gauss_contribution
+    m_charge = np.round(m_charge * 2) / 2
     if debug:
         print(f"Charges calculated : {m_charge}")
         total_charge = np.nansum(m_charge)

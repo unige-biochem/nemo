@@ -397,7 +397,7 @@ def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_
     save_array(np.column_stack((directors_2dcurved_cropped[:, :3], n_avg_2dcurv_sphi_cropped)),
                name=f"n_avg_2dcurv_sphi_cropped_{patch_label}",
                header="x,y,z,vx,vy,vz", folderpath=resdata_dir_layer)
-    np.savez(os.path.join(resdata_dir_layer, f"q_sphi_full_cropped_{patch_label}"), q_sphi_cropped=q_sphi_full_cropped)
+    np.savez_compressed(os.path.join(resdata_dir_layer, f"q_sphi_full_cropped_{patch_label}"), q_sphi_cropped=q_sphi_full_cropped)
 
     # ==== Plot Curved Nematic Order ====
     q_sphi_decomposition = decompose_q_sphi(q_sphi=q_sphi_full_cropped, s_coords=dir_s_cropped, num_bins=profile_bins)

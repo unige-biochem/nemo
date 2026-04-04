@@ -103,7 +103,7 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
     # ==== Save Vertices for 2D+ Orientation Analysis ====
     print(f"Num of directors to be calculated: {len(idxs_sel)} !")
     save_array(idxs_sel, "calcindeces", header="idx", folderpath=resdata_dir_layer)
-    np.savez(os.path.join(resdata_dir_layer, "extraction_idxs_neigh.npz"),
+    np.savez_compressed(os.path.join(resdata_dir_layer, "extraction_idxs_neigh.npz"),
              idxs_neigh=np.asarray(idxs_neigh, dtype=object))
     # ==== Create the Tangential Bases ====
     neighbors_coords = [layer_mesh.vertices[patch] for patch in idxs_neigh]

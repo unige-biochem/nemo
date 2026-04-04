@@ -198,25 +198,26 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), sl
         axes[2].axhline(y=z_i, linestyle="--", alpha=slice_line_alpha)
         axes[2].axvline(x=y_i, linestyle="--", alpha=slice_line_alpha)
 
+    from matplotlib.transforms import offset_copy
+
     if show_scalebar:
-        auto_len = int(10 ** np.round(np.log10(0.2 * max(np.array(img.shape) * np.array(scale)))))
+        r = 0.2 * max(np.array(img.shape) * scale)
+        auto_len = int(
+            min([10 ** n * m for n in [np.floor(np.log10(r))] for m in [1, 2, 5, 10]], key=lambda x: abs(x - r)))
         axes_configs = [(axes[0], z_slice, scale[2], True, 'X', 'Y'),
                         (axes[1], y_slice, scale[2], False, 'X', 'Z'),
                         (axes[2], x_slice, scale[1], False, 'Y', 'Z')]
+
         for ax, s_data, x_sc, is_up, xlab, ylab in axes_configs:
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.set_xlabel(f"{xlab}")
-            ax.set_ylabel(f"{ylab}")
             h, w = s_data.shape
             auto_len_px = auto_len / x_sc
-            x_e = w - (w * 0.05)
-            x_s = x_e - auto_len_px
-            y_b = h - (h * 0.08) if is_up else (h * 0.08)
-            y_t = y_b - (h * 0.05) if is_up else y_b + (h * 0.05)
-            ax.plot([x_s, x_e], [y_b, y_b], color=scalebar_colour, lw=2.5)
-            ax.text(x_s + auto_len_px / 2, y_t, f"{auto_len} {unit}",
-                    color=scalebar_colour, fontsize=scalebar_fontsize,
+            x_s = 0.98 * w - auto_len_px
+            y_b = 0.98 * h if is_up else 0.02 * h
+            ax.plot([x_s, x_s + auto_len_px], [y_b, y_b], color=scalebar_colour, lw=2.5)
+            offset = 7
+            trans = offset_copy(ax.transData, fig=fig, y=offset, units='points')
+            ax.text(x_s + auto_len_px / 2, y_b, f"{auto_len} {unit}",
+                    transform=trans, color=scalebar_colour, fontsize=scalebar_fontsize,
                     ha='center', va='center', fontweight='bold')
     else:
         for i, (ax, xlab, ylab) in enumerate(zip(axes, ['X', 'X', 'Y'], ['Y', 'Z', 'Z'])):

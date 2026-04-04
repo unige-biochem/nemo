@@ -64,14 +64,19 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
              hidefig=hidefig)
     print(f"MESH {full_mesh_name}: # VERTICES = {len(full_mesh.vertices)} !")
 
-    if split_mode == "top/bottom":
-        # ==== Select TOP / BOTTOM Mesh ====
+    if split_mode == "along_z":
         mesh_sel_mask = np.einsum('ij,ij->i', np.array([[1, 0, 0] for _ in range(len(full_mesh.vertices))]),
                                   full_mesh.vertex_normals) < 0
-    elif split_mode == "inner/out":
-        # ==== Select INNER / OUTER Mesh ====
+    elif split_mode == "radial_spherical":
         mesh_sel_mask = np.einsum('ij,ij->i', full_mesh.vertices - np.mean(full_mesh.vertices, axis=0),
                                   full_mesh.vertex_normals) > 0
+    elif split_mode == "radial_cylindrical":
+        centered_verts = full_mesh.vertices - np.mean(full_mesh.vertices, axis=0)
+        cylinder_axis = "x"
+        axis_idx = {'z': 2, 'y': 1, 'x': 0}.get(cylinder_axis.lower(), 2)
+        radial_vecs = centered_verts.copy()
+        radial_vecs[:, axis_idx] = 0
+        mesh_sel_mask = np.einsum('ij,ij->i', radial_vecs, full_mesh.vertex_normals) > 0
     else:
         print(f"[!] Unrecognised splitting mode {split_mode} !")
         return None
@@ -112,7 +117,11 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
                                                      f"sliced_raw_{mesh_names[i]}_maxproj.pdf"),
                  hidefig=hidefig)
 
-        mesh_i_smooth_subsets = analysis.find_connected_meshes(mesh=mesh_i_smooth)
+        try:
+            mesh_i_smooth_subsets = analysis.find_connected_meshes(mesh=mesh_i_smooth)
+        except:
+            print(f"[!] Issue finding submeshes of {mesh_names[i]} !")
+            mesh_i_smooth_subsets = [mesh_i_smooth]
         sizes = [mesh.vertices.shape[0] for mesh in mesh_i_smooth_subsets]
         mesh_i_smooth_subsets_largest = mesh_i_smooth_subsets[np.argmax(sizes)]
 

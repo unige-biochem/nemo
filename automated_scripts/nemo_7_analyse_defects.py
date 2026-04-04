@@ -185,13 +185,10 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     save_array(charge_pol_linked_idxs, name=f"def-pol_2dcurved_idxs", header="idx",
                folderpath=resdata_dir_layer)
 
-    rotation_angles = [1, 1, 1]
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices, rotate=rotation_angles)
+    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
-                                                           directors_2dcurved_avg[:, 3:],
-                                                           rotate=rotation_angles)
-    pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:],
-                                                           rotate=rotation_angles)
+                                                           directors_2dcurved_avg[:, 3:])
+    pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:])
     plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
                               vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
                               vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
