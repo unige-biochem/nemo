@@ -103,8 +103,8 @@ def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
 
 def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), slice_line_alpha=0.5,
              cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None, mesh_normal_alpha=0.8,
-             slice_depth=10, mesh_thick=0.5, mesh_alpha=0.1, thresh_alpha=0.8, mesh_colors=None,
-             show_mesh_normals=False, mesh_interval=5, normal_scale=0.05, normal_interval=20,
+             slice_depth=10, mesh_thick=0.2, mesh_alpha=0.1, thresh_alpha=0.8, mesh_colors=None,
+             show_mesh_normals=False, mesh_interval=5, normal_scale=0.05, normal_interval=50,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
              manual_vminvmax=None, savefig="", hidefig=False,
              show_scalebar=True, scalebar_fontsize=12):

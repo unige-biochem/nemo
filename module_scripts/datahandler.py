@@ -50,29 +50,25 @@ def save_array(array, name, header, folderpath, delimiter=","):
 # IMAGE I/O MODULES #
 #####################
 
-def save_tiff(array, filepath, img_unit, img_scale=(1.0, 1.0, 1.0)):
+def save_tiff(array, filepath, img_unit, img_scale):
     z_pix, y_pix, x_pix = img_scale
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    clean_unit = 'micron' if img_unit.lower() in ['um', 'µm', 'micron', 'microns'] else img_unit
     meta = {
-        'unit': img_unit,
+        'unit': clean_unit,
         'spacing': z_pix,
     }
     if array.ndim == 5:
-        # Standard: Time, Z, Channel, Y, X
         n_t, n_z, n_c, n_y, n_x = array.shape
         meta.update({'axes': 'TZCYX', 'frames': n_t, 'slices': n_z, 'channels': n_c})
-
     elif array.ndim == 4:
         n_z, n_c, n_y, n_x = array.shape
         meta.update({'axes': 'ZCYX', 'slices': n_z, 'channels': n_c})
-        print(f">> 4D detected: Interpreting as Z={n_z}, C={n_c}")
-
     elif array.ndim == 3:
         n_z, n_y, n_x = array.shape
         meta.update({'axes': 'ZYX', 'slices': n_z})
     else:
         raise ValueError(f"Unsupported array shape: {array.shape}")
-
     tifffile.imwrite(
         filepath,
         array.astype(np.float32),
@@ -80,7 +76,9 @@ def save_tiff(array, filepath, img_unit, img_scale=(1.0, 1.0, 1.0)):
         resolution=(1.0 / x_pix, 1.0 / y_pix),
         metadata=meta
     )
-    print(f">> Saved {meta['axes']} to {filepath} with scaling {img_scale} !")
+
+    print(f">> Saved {meta['axes']} to {filepath}")
+    print(f">> Scaling: {x_pix:.4f}x{y_pix:.4f}x{z_pix:.4f} {clean_unit}")
 
 
 def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):

@@ -61,8 +61,9 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
     plot_img(img=img_raw, scale=img_scale, unit=img_unit,
              savefig=os.path.join(resfig_dir, "sliced_thresh_maxproj.pdf"),
              cmap="inferno_r", thresh_mask=img_thresh, hidefig=hidefig, max_proj=True)
-    save_tiff(img_blur, filepath=os.path.join(resfig_dir, "img_blurred.tiff"), img_unit=img_unit)
-    save_tiff(img_thresh, filepath=os.path.join(resfig_dir, "img_thresholded.tiff"), img_unit=img_unit)
+    save_tiff(img_blur, filepath=os.path.join(resfig_dir, "img_blurred.tiff"), img_unit=img_unit, img_scale=img_scale)
+    save_tiff(img_thresh, filepath=os.path.join(resfig_dir, "img_thresholded.tiff"), img_unit=img_unit,
+              img_scale=img_scale)
     save_array(np.column_stack(([img_blur_val], [img_thresh_val])), name="blur_thresh_parameters",
                header="blur,thresh", folderpath=resdata_dir)
     if render:
