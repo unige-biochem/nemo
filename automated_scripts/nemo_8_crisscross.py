@@ -89,26 +89,14 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(plotted_vecfields[:, :3],
                                                            plotted_vecfields[:, 3:],
                                                            rotate=rotation_angles)
-    plot_spherical_projection(
-        phi=sph_proj_phi,
-        theta=sph_proj_theta,
-        intensities=np.ones_like(sph_proj_phi),
-        vec_pos_phi=sph_proj_phi,
-        vec_pos_theta=sph_proj_theta,
-        vec_dir_phi=vec_dir_phi,
-        vec_dir_theta=vec_dir_theta,
-        vec_cmap_label="criss cross magnitude",
-        hexgridsize=200,
-        scale_factor=5, alpha=0.0,
-        cmap="Greys_r", vec_width=0.0015,
-        veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
-        vec_manual_vminmax=[0, 1],
-        arrow_alpha=0.8, figsize=(22, 8), vec_cmap="coolwarm",
-        aspect="equal",
-        savefig=os.path.join(resfig_dir,
-                             f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.pdf"),
-        hidefig=hidefig
-    )
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
+                              cmap="Greys_r", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
+                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
+                              veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
+                              vec_manual_vminmax=[0, 1], vec_cmap="coolwarm", vec_cmap_label="criss cross magnitude",
+                              savefig=os.path.join(resfig_dir,
+                                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.pdf"),
+                              hidefig=hidefig)
 
     proj_layer_1 = load_array("intensities", folderpath=os.path.join(resdata_dir, layer_name_1))
     proj_layer_2 = load_array("intensities", folderpath=os.path.join(resdata_dir, layer_name_2))

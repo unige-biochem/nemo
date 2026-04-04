@@ -214,7 +214,6 @@ def get_tiff_scaling(tif):
 
 
 def load_img_unit(path, default_unit="um"):
-    print(f">> Loading {path}...")
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None

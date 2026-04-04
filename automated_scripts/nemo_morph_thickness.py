@@ -79,7 +79,7 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl
               savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_thickness_hist.pdf"),
               hidefig=hidefig)
     plot_maxproj_pts(verts=mesh_1.vertices, unit=img_unit, colors=full_dist_vals, cmap="coolwarm",
-                     hexsize=200, cmap_label=f"Thickness ({img_unit})",
+                     interp_grid_n=200, cmap_label=f"Thickness ({img_unit})",
                      savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_thickness.pdf"),
                      figsize=(15, 7), hidefig=hidefig)
     save_array(np.column_stack(([thickness_sampl_number], [interp_k])),

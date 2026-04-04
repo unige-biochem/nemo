@@ -23,6 +23,7 @@ from matplotlib import colors as pltcolors
 from matplotlib.colors import ListedColormap, Normalize, BoundaryNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
+import matplotlib.tri as tri
 
 #############################################
 # [!!!] Dark/Light Mode for all Plots [!!!] #
@@ -103,7 +104,7 @@ def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
 
 def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), slice_line_alpha=0.5,
              cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None, mesh_normal_alpha=0.8,
-             slice_depth=10, mesh_thick=0.2, mesh_alpha=0.1, thresh_alpha=0.8, mesh_colors=None,
+             slice_depth=10, mesh_thick=0.2, mesh_alpha=0.2, thresh_alpha=0.8, mesh_colors=None,
              show_mesh_normals=False, mesh_interval=5, normal_scale=0.05, normal_interval=50,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
              manual_vminvmax=None, savefig="", hidefig=False,
@@ -239,17 +240,20 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), sl
         plt.close()
 
 
-def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, figsize=(15, 8), savefig="", dpi=200,
+def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, interp_grid_n=200, figsize=(15, 8), savefig="", dpi=200,
                      cmap_label="Signal (a.u.)", manual_vminmax=None, hidefig=False):
-    print(">> Plotting max projection of coloured points...")
+    print(">> Plotting max projection with fast triangulation...")
+
     if colors is None:
-        print(f"No colors given, assuming uniform color!")
-        colors = np.zeros_like(verts)
+        colors = np.zeros(len(verts))
+
     if manual_vminmax is None:
         vmin, vmax = colors.min(), colors.max()
     else:
         vmin, vmax = manual_vminmax
+
     fig, axes = plt.subplots(2, 3, figsize=figsize)
+
     panels = [
         (0, 0, verts[:, 0] >= verts[:, 0].max() / 2, verts[:, 2], verts[:, 1], 'X', 'Y'),
         (0, 1, verts[:, 1] >= verts[:, 1].max() / 2, verts[:, 2], verts[:, 0], 'X', 'Z'),
@@ -258,17 +262,25 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, fig
         (1, 1, verts[:, 1] < verts[:, 1].max() / 2, verts[:, 2], verts[:, 0], 'X', 'Z'),
         (1, 2, verts[:, 2] < verts[:, 2].max() / 2, verts[:, 1], verts[:, 0], 'Y', 'Z'),
     ]
-    for i, j, mask, x, y, xlabel, ylabel in panels:
+
+    for i, j, mask, x_data, y_data, xlabel, ylabel in panels:
         ax = axes[i, j]
         if np.any(mask):
-            ax.hexbin(x[mask], y[mask], C=colors[mask], gridsize=hexsize, cmap=cmap, vmin=vmin, vmax=vmax)
+            x, y, c = x_data[mask], y_data[mask], colors[mask]
+            triang = tri.Triangulation(x, y)
+            interp = tri.LinearTriInterpolator(triang, c)
+            xi = np.linspace(x.min(), x.max(), interp_grid_n)
+            yi = np.linspace(y.min(), y.max(), interp_grid_n)
+            Xi, Yi = np.meshgrid(xi, yi)
+            zi = interp(Xi, Yi)
+            ax.imshow(zi, extent=(x.min(), x.max(), y.min(), y.max()),
+                      origin='lower', cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
             ax.set_xlabel(f'{xlabel} ({unit})')
             ax.set_ylabel(f'{ylabel} ({unit})')
-            ax.set_xticks(np.linspace(x[mask].min(), x[mask].max(), 3))
-            ax.set_yticks(np.linspace(y[mask].min(), y[mask].max(), 3))
+            ax.set_xticks(np.linspace(x.min(), x.max(), 3))
+            ax.set_yticks(np.linspace(y.min(), y.max(), 3))
             ax.set_xticklabels(np.round(ax.get_xticks(), 2))
             ax.set_yticklabels(np.round(ax.get_yticks(), 2))
-            ax.set_aspect('equal')
         else:
             ax.set_visible(False)
     cbar = fig.colorbar(
@@ -280,7 +292,7 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, hexsize=600, fig
 
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
         plt.show()
     else:
@@ -476,7 +488,7 @@ def plot_slice_heatmap(coords, values, img_dim, img_scale, pt_size=20, grid_n=40
     if manual_vminvmax is None:
         manual_vminvmax = [values.min(), values.max()]
     plt.imshow(zi, origin='lower', extent=[x.min(), x.max(), y.min(), y.max()],
-               cmap=cmap, aspect="auto", vmin=manual_vminvmax[0], vmax=manual_vminvmax[1])
+               cmap=cmap, aspect="equal", vmin=manual_vminvmax[0], vmax=manual_vminvmax[1])
     plt.colorbar(label=cmap_label)
     plt.title(title)
     plt.scatter(x, y, c=values, cmap=cmap, edgecolor='k', vmin=manual_vminvmax[0], vmax=manual_vminvmax[1], s=pt_size)
@@ -630,72 +642,75 @@ def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, a
 
 
 def plot_spherical_projection(phi, theta, intensities,
-                              hexview=True, ptview=False, hexgridsize=200,
+                              hexview=True, ptview=False, interp_grid_n=200,
                               cmap="Greens", vec_pos_phi=None, vec_pos_theta=None,
                               vec_dir_phi=None, vec_dir_theta=None, veccolor="red",
                               vec_manual_vminmax=None, vec_cmap="Spectral",
-                              scale_factor=1.0, figsize=(5, 4), arrow_alpha=1.0,
+                              scale_factor=10.0, figsize=(15, 5), arrow_alpha=0.7,
                               vec_cmap_label="", vec_width=0.001, ptsize=2, alpha=1.0,
-                              invert_y_axis=False, aspect=2,
+                              invert_y_axis=False,
                               cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=200,
                               hidefig=False, marker_idxs=None, marker_color="yellow",
-                              marker_size=500, marker_alpha=0.9, marker_vec=None, marker_vec_scale=1.0,
-                              marker_vec_width=0.002, marker_vec_color="red"):
+                              marker_size=500, marker_alpha=0.9, marker_vec=None, marker_vec_scale=20,
+                              marker_vec_width=0.005, marker_vec_color="red"):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
+
     if draw_vectors and not isinstance(veccolor, str):
-        vec_norm = plt.Normalize(vmin=np.min(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[0],
-                                 vmax=np.max(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[1])
+        v_min_val = np.min(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[0]
+        v_max_val = np.max(veccolor) if vec_manual_vminmax is None else vec_manual_vminmax[1]
+        vec_norm = Normalize(vmin=v_min_val, vmax=v_max_val)
     else:
         vec_norm = None
+
     fig = plt.figure(figsize=figsize)
     ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])
+
     if hexview:
-        ax.hexbin(phi, theta, C=intensities, cmap=cmap, gridsize=hexgridsize, alpha=alpha)
+        triang = tri.Triangulation(phi, theta)
+        interp = tri.LinearTriInterpolator(triang, intensities)
+        xi = np.linspace(phi.min(), phi.max(), interp_grid_n)
+        yi = np.linspace(theta.min(), theta.max(), interp_grid_n)
+        Xi, Yi = np.meshgrid(xi, yi)
+        zi = interp(Xi, Yi)
+        ax.imshow(zi, extent=(phi.min(), phi.max(), theta.min(), theta.max()),
+                  origin='lower', cmap=cmap, vmin=vmin, vmax=vmax,
+                  aspect='equal', alpha=alpha, interpolation='bilinear')
     if ptview:
-        ax.scatter(phi, theta, c=intensities, cmap=cmap, s=ptsize, alpha=alpha)
+        ax.scatter(phi, theta, c=intensities, cmap=cmap, s=ptsize, alpha=alpha, vmin=vmin, vmax=vmax)
+
     if draw_vectors:
-        if isinstance(veccolor, str):
-            ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
-                      pivot="middle", headlength=0, headwidth=0, headaxislength=0,
-                      angles='xy', scale_units='xy', scale=1, color=veccolor,
-                      alpha=arrow_alpha, width=vec_width)
-        else:
-            ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
-                      pivot="middle", headlength=0, headwidth=0, headaxislength=0,
-                      angles='xy', scale_units='xy', scale=1,
-                      color=plt.cm.get_cmap(vec_cmap)(vec_norm(veccolor)),
-                      alpha=arrow_alpha, width=vec_width)
+        q_color = veccolor if isinstance(veccolor, str) else plt.cm.get_cmap(vec_cmap)(vec_norm(veccolor))
+        ax.quiver(vec_pos_phi, vec_pos_theta, vec_dir_phi * scale_factor, vec_dir_theta * scale_factor,
+                  pivot="middle", headlength=0, headwidth=0, headaxislength=0,
+                  angles='xy', scale_units='xy', scale=1, color=q_color,
+                  alpha=arrow_alpha, width=vec_width)
 
     if marker_idxs is not None:
-        if type(marker_color) == str:
-            ax.scatter(phi[marker_idxs], theta[marker_idxs], color=marker_color, s=marker_size, alpha=marker_alpha)
-        else:
-            ax.scatter(phi[marker_idxs], theta[marker_idxs], c=marker_color, s=marker_size,
-                       alpha=marker_alpha)
+        m_c = marker_color if isinstance(marker_color, str) else marker_color
+        ax.scatter(phi[marker_idxs], theta[marker_idxs], c=m_c, s=marker_size, alpha=marker_alpha)
+
         if marker_vec is not None:
-            marker_vec_phi, marker_vec_theta, marker_vec_idxs = marker_vec
-            ax.quiver(phi[marker_vec_idxs], theta[marker_vec_idxs],
-                      marker_vec_phi * marker_vec_scale,
-                      marker_vec_theta * marker_vec_scale,
+            mv_phi, mv_theta, mv_idxs = marker_vec
+            ax.quiver(phi[mv_idxs], theta[mv_idxs], mv_phi * marker_vec_scale, mv_theta * marker_vec_scale,
                       angles='xy', scale_units='xy', scale=1,
                       color=marker_vec_color, alpha=marker_alpha, width=marker_vec_width)
+
     if invert_y_axis:
         ax.invert_yaxis()
-    ax.set_aspect(aspect)
+
+    ax.set_aspect("equal")
     ax.set_xlabel("Phi (deg)")
     ax.set_ylabel("Theta (deg)")
     cax_int = fig.add_axes([0.75, 0.1, 0.03, 0.8])
-    sm_int = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax))
-    sm_int.set_array([])
-    cbar_int = fig.colorbar(sm_int, cax=cax_int)
-    cbar_int.set_label(cmap_label)
+    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
+                 cax=cax_int, label=cmap_label)
+
     if draw_vectors and not isinstance(veccolor, str):
         cax_vec = fig.add_axes([0.82, 0.1, 0.03, 0.8])
-        sm_vec = plt.cm.ScalarMappable(cmap=plt.cm.get_cmap(vec_cmap), norm=vec_norm)
-        sm_vec.set_array([])
-        cbar_vec = fig.colorbar(sm_vec, cax=cax_vec)
-        cbar_vec.set_label(vec_cmap_label)
+        fig.colorbar(plt.cm.ScalarMappable(norm=vec_norm, cmap=plt.cm.get_cmap(vec_cmap)),
+                     cax=cax_vec, label=vec_cmap_label)
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
@@ -705,32 +720,44 @@ def plot_spherical_projection(phi, theta, intensities,
         plt.close()
 
 
-def plot_cylindrical_projection(phi, rho, s, colors, cbar_label="Fluorescence Intensity (a.u.)", hexsize=400,
+def plot_cylindrical_projection(phi, rho, s, colors, cbar_label="Fluorescence Intensity (a.u.)", interp_grid_n=200,
                                 cmap="magma", manual_vminmax=None, shift_angle_rad=None, title="", savefig="",
                                 hidefig=False, xlabel=fr'Arc length $s$ (um)', ylabel=r'$\rho\,\phi$  (um)',
-                                aspect="equal", dpi=300, figsize=(10, 10)):
+                                dpi=300, figsize=(15, 5)):
     phi_proj = phi.copy()
     if shift_angle_rad is not None:
         phi_proj = (phi - shift_angle_rad + np.pi) % (2 * np.pi) - np.pi
+
     y = rho * phi_proj
-    _, ax = plt.subplots(1, 1, figsize=figsize)
+
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
     ax.set_title(title)
+
     if manual_vminmax is None:
         vmin, vmax = colors.min(), colors.max()
     else:
         vmin, vmax = manual_vminmax
-    img = ax.hexbin(s, y, C=colors, gridsize=hexsize, cmap=cmap,
-                    vmin=vmin, vmax=vmax)
+    triang = tri.Triangulation(s, y)
+    interp = tri.LinearTriInterpolator(triang, colors)
+    xi = np.linspace(s.min(), s.max(), interp_grid_n)
+    yi = np.linspace(y.min(), y.max(), interp_grid_n)
+    Xi, Yi = np.meshgrid(xi, yi)
+    zi = interp(Xi, Yi)
+    img = ax.imshow(zi, extent=(s.min(), s.max(), y.min(), y.max()),
+                    origin='lower', cmap=cmap, vmin=vmin, vmax=vmax,
+                    aspect="equal", interpolation='bilinear')
+
     plt.colorbar(img, ax=ax, label=cbar_label)
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set_aspect(aspect)
     ax.axhline(0, color="grey", linestyle="--", alpha=0.5)
+
     plt.tight_layout()
+
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
-        plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
         plt.show()
     else:
@@ -1288,8 +1315,8 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
     napari.run()
 
 
-def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="opaque",
-                       shading="none", opacity=0.2, use_orig_color=True):
+def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="translucent",
+                       shading="none", opacity=0.8, use_orig_color=True):
     print(">> Rendering colored vertices...")
     viewer = initialise_viewer()
     if img is not None:

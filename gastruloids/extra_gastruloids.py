@@ -302,11 +302,9 @@ def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_
                  vert_line=[low_cutoff_phi, high_cutoff_phi],
                  savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.pdf"))
 
-    plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer,
-                                aspect="equal",
-                                hidefig=hidefig,
-                                title=f"Projected Intensities \n{layer_label}", hexsize=400, cmap="inferno",
-                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.pdf"))
+    plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer, interp_grid_n=200,
+                                cmap="inferno", title=f"Projected Intensities \n{layer_label}",
+                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.pdf"), hidefig=hidefig)
     plot_rho_profile(mesh_s=layer_mesh_s, mesh_rho=layer_mesh_rho, mesh_phi=layer_mesh_phi,
                      img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}.pdf"))
@@ -362,11 +360,10 @@ def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_
     save_array(directors_2dcurved_cropped, "directors_2dcurved_cropped", header="x,y,z,vx,vy,vz",
                folderpath=resdata_dir_layer)
     plot_cylindrical_projection(phi=layer_mesh_phi_cropped, rho=layer_mesh_rho_cropped, s=layer_mesh_s_cropped,
-                                colors=proj_layer_cropped,
-                                aspect="equal",
-                                title=f"Cropped Projected Intensities \n{layer_label}", hexsize=400,
-                                cmap="inferno", figsize=(10, 5), hidefig=hidefig,
-                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.pdf"))
+                                colors=proj_layer_cropped, interp_grid_n=200, cmap="inferno",
+                                title=f"Cropped Projected Intensities \n{layer_label}",
+                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.pdf"),
+                                hidefig=hidefig, figsize=(10, 5))
     plot_rho_profile(mesh_s=layer_mesh_s_cropped, mesh_rho=layer_mesh_rho_cropped, mesh_phi=layer_mesh_phi_cropped,
                      img_unit=img_unit, hidefig=hidefig,
                      savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}_cropped.pdf"))

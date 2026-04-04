@@ -84,23 +84,13 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
                                                            directors_2dcurved_avg[:, 3:])
-    plot_spherical_projection(
-        phi=sph_proj_phi,
-        theta=sph_proj_theta,
-        intensities=proj_layer,
-        vec_pos_phi=sph_proj_phi[idxs_sel],
-        vec_pos_theta=sph_proj_theta[idxs_sel],
-        vec_dir_phi=vec_dir_phi,
-        vec_dir_theta=vec_dir_theta,
-        vec_cmap_label="order scalar $S$",
-        hexgridsize=150, scale_factor=10,
-        cmap="Greys_r",
-        veccolor=s_2dcurv, vec_manual_vminmax=[0, 1],
-        arrow_alpha=1.0, figsize=(20, 13),
-        marker_idxs=idxs_sel[defect_idxs],
-        marker_color=color_scalar(np.linspace(0, 1, len(defect_idxs)), "Set1"),
-        savefig=os.path.join(resfig_dir_layer, f"defect-locations.pdf"), hidefig=hidefig
-    )
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                              vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                              savefig=os.path.join(resfig_dir_layer, f"defect-locations.pdf"), hidefig=hidefig,
+                              marker_idxs=idxs_sel[defect_idxs],
+                              marker_color=color_scalar(np.linspace(0, 1, len(defect_idxs)), "Set1"))
     defect_coords = layer_mesh.vertices[idxs_sel[defect_idxs]]
     save_array(defect_coords, name="defect_coords", header="x,y,z", folderpath=resdata_dir_layer)
     if render:

@@ -164,20 +164,11 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved[:, :3],
                                                            directors_2dcurved[:, 3:])
 
-    plot_spherical_projection(
-        phi=sph_proj_phi,
-        theta=sph_proj_theta,
-        intensities=proj_layer,
-        vec_pos_phi=sph_proj_phi[idxs_sel],
-        vec_pos_theta=sph_proj_theta[idxs_sel],
-        vec_dir_phi=vec_dir_phi,
-        vec_dir_theta=vec_dir_theta,
-        hexgridsize=150,
-        scale_factor=10,
-        cmap="Greens",
-        arrow_alpha=0.7, figsize=(13, 10), hidefig=hidefig,
-        savefig=os.path.join(resfig_dir_layer, "spherical_projection_extracted-directors.pdf")
-    )
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
+                              savefig=os.path.join(resfig_dir_layer, "spherical_projection_extracted-directors.pdf"),
+                              hidefig=hidefig)
     if render:
         # ==== 3D Render Patch of 2D+ Orientation Analysis ====
         full_mesh_colors = np.array(["#FF0000" for _ in range(len(layer_mesh.vertices))])

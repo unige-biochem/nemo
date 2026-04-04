@@ -159,26 +159,13 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
                                                            directors_2dcurved_avg[:, 3:])
-    plot_spherical_projection(
-        phi=sph_proj_phi,
-        theta=sph_proj_theta,
-        intensities=proj_layer,
-        vec_pos_phi=sph_proj_phi[idxs_sel],
-        vec_pos_theta=sph_proj_theta[idxs_sel],
-        vec_dir_phi=vec_dir_phi,
-        vec_dir_theta=vec_dir_theta,
-        vec_cmap_label="order scalar $S$",
-        hexgridsize=150,
-        scale_factor=10,
-        cmap="Greys_r",
-        veccolor=s_2dcurv,
-        vec_manual_vminmax=[0, 1],
-        arrow_alpha=1.0, figsize=(20, 13),
-        marker_idxs=idxs_sel[defect_idxs_calc],
-        marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
-        savefig=os.path.join(resfig_dir_layer, f"defect-charges.pdf"),
-        hidefig=hidefig
-    )
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                              vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                              savefig=os.path.join(resfig_dir_layer, f"defect-charges.pdf"), hidefig=hidefig,
+                              marker_idxs=idxs_sel[defect_idxs_calc],
+                              marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"))
 
     pol_vecfield, pol_idxs = compute_defect_polarisations(
         mesh=layer_mesh,
@@ -205,28 +192,16 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                                                            rotate=rotation_angles)
     pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:],
                                                            rotate=rotation_angles)
-    plot_spherical_projection(
-        phi=sph_proj_phi,
-        theta=sph_proj_theta,
-        intensities=proj_layer,
-        vec_pos_phi=sph_proj_phi[idxs_sel],
-        vec_pos_theta=sph_proj_theta[idxs_sel],
-        vec_dir_phi=vec_dir_phi,
-        vec_dir_theta=vec_dir_theta,
-        vec_cmap_label="order scalar $S$",
-        hexgridsize=400,
-        scale_factor=2,
-        cmap="Greys_r", vec_width=0.0015,
-        veccolor=s_2dcurv, vec_manual_vminmax=[0, 1],
-        arrow_alpha=1.0, figsize=(22, 8),
-        marker_idxs=idxs_sel[defect_idxs_calc],
-        marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
-        marker_vec=(pol_dir_phi, pol_dir_theta, idxs_sel[pol_idxs]),
-        marker_vec_scale=20, marker_vec_width=0.005, aspect="equal",
-        marker_vec_color=color_scalar(m_charge[charge_pol_linked_idxs], manual_vminmax=[-1, 1],
-                                      cmap="rainbow"),
-        savefig=os.path.join(resfig_dir_layer, f"defect-polarisations.pdf"), hidefig=hidefig
-    )
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                              vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                              savefig=os.path.join(resfig_dir_layer, f"defect-polarisations.pdf"), hidefig=hidefig,
+                              marker_idxs=idxs_sel[defect_idxs_calc],
+                              marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
+                              marker_vec=(pol_dir_phi, pol_dir_theta, idxs_sel[pol_idxs]),
+                              marker_vec_color=color_scalar(m_charge[charge_pol_linked_idxs], manual_vminmax=[-1, 1],
+                                                            cmap="rainbow"))
     if render:
         view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg, mesh_shading="flat",
                                     mesh_vert_colors=color_scalar(proj_layer, normalise=True,

@@ -141,11 +141,10 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
 
     # ==== Plot Projected Result ====
     mercator_x, mercator_y = spherical_project(pts=layer_mesh.vertices)
-    plot_spherical_projection(phi=mercator_x, theta=mercator_y, intensities=proj_layer, hexgridsize=100,
-                              savefig=os.path.join(resfig_dir_layer, "mercator.pdf"), hidefig=hidefig,
-                              cmap="inferno")
-    plot_maxproj_pts(verts=layer_mesh.vertices, colors=proj_layer, cmap="inferno", hexsize=100, unit=img_unit,
-                     figsize=(18, 8), savefig=os.path.join(resfig_dir_layer, "maxproj.pdf"), hidefig=hidefig)
+    plot_spherical_projection(phi=mercator_x, theta=mercator_y, intensities=proj_layer, cmap="inferno",
+                              savefig=os.path.join(resfig_dir_layer, "mercator.pdf"), hidefig=hidefig)
+    plot_maxproj_pts(verts=layer_mesh.vertices, colors=proj_layer, cmap="inferno", unit=img_unit,
+                     savefig=os.path.join(resfig_dir_layer, "maxproj.pdf"), hidefig=hidefig)
 
     if render:
         view_colored_mesh(mesh=layer_mesh, mesh_blending="opaque",

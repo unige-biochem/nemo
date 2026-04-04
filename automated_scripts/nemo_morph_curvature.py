@@ -103,11 +103,11 @@ def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k,
               savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_hist_{patch_label}.pdf"),
               hidefig=hidefig)
     plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_gauss, cmap="coolwarm",
-                     hexsize=100, cmap_label=f"Gaussian Curvature $(1/{img_unit}^2)$",
+                     interp_grid_n=200, cmap_label=f"Gaussian Curvature $(1/{img_unit}^2)$",
                      savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_curv_{patch_label}.pdf"),
                      hidefig=hidefig)
     plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_mean, cmap="Spectral",
-                     hexsize=100, cmap_label=f"Mean Curvature $(1/{img_unit})$",
+                     interp_grid_n=200, cmap_label=f"Mean Curvature $(1/{img_unit})$",
                      savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_curv_{patch_label}.pdf"),
                      hidefig=hidefig)
 
