@@ -100,104 +100,95 @@ def colour_dist(distances, middle_val, radial_points, mesh, radial_intensities):
 # 2D PLOTTING MODULES #
 #######################
 
-def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 3), slice_line_alpha=0.8,
+
+def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), slice_line_alpha=0.5,
              cmap="Greens_r", dpi=200, thresh_mask=None, max_proj=False, meshes=None, mesh_normal_alpha=0.8,
-             slice_depth=10, mesh_thick=0.1, mesh_alpha=0.3, thresh_alpha=0.8, mesh_colors=None,
-             show_mesh_normals=False, normal_scale=0.03, normal_vecfreq=20,
+             slice_depth=10, mesh_thick=0.5, mesh_alpha=0.1, thresh_alpha=0.8, mesh_colors=None,
+             show_mesh_normals=False, mesh_interval=5, normal_scale=0.05, normal_interval=20,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
-             manual_vminvmax=None, savefig="", hidefig=False):
-    print(">> Plotting slices...")
-    if z_i is None:
-        z_i = img.shape[0] // 2
-    if y_i is None:
-        y_i = img.shape[1] // 2
-    if x_i is None:
-        x_i = img.shape[2] // 2
+             manual_vminvmax=None, savefig="", hidefig=False,
+             show_scalebar=True, scalebar_fontsize=12):
+    print(f">> Plotting {'Max Projections' if max_proj else 'Slices'} ...")
+
+    # Coordinate & Slice setup
+    if z_i is None: z_i = img.shape[0] // 2
+    if y_i is None: y_i = img.shape[1] // 2
+    if x_i is None: x_i = img.shape[2] // 2
 
     if max_proj:
-        z_title = "Z Max Projection"
-        y_title = "Y Max Projection "
-        x_title = "X Max Projection"
-        z_slice = np.max(img, axis=0)
-        y_slice = np.max(img, axis=1)
-        x_slice = np.max(img, axis=2)
+        show_mesh_normals = False
+        scalebar_colour = "black"
+        z_slice, y_slice, x_slice = np.max(img, axis=0), np.max(img, axis=1), np.max(img, axis=2)
+        z_title, y_title, x_title = "Z Max Projection", "Y Max Projection", "X Max Projection"
     else:
-        z_title = f'Z={np.round(z_i * scale[0], decimals=title_digit_precision)} {unit} Slice'
-        y_title = f'Y={np.round(y_i * scale[1], decimals=title_digit_precision)} {unit} Slice'
-        x_title = f'X={np.round(x_i * scale[2], decimals=title_digit_precision)} {unit} Slice'
-        z_slice = img[z_i, :, :]
-        y_slice = img[:, y_i, :]
-        x_slice = img[:, :, x_i]
+        scalebar_colour = "white"
+        z_slice, y_slice, x_slice = img[z_i, :, :], img[:, y_i, :], img[:, :, x_i]
+        z_title = f'Z={np.round(z_i * scale[0], decimals=title_digit_precision)} {unit}'
+        y_title = f'Y={np.round(y_i * scale[1], decimals=title_digit_precision)} {unit}'
+        x_title = f'X={np.round(x_i * scale[2], decimals=title_digit_precision)} {unit}'
 
     fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    # Normalisation
     if manual_vminvmax is None:
-        vmin, vmax = np.array([z_slice.min(), y_slice.min(), x_slice.min()]).min(), np.array(
-            [z_slice.max(), y_slice.max(),
-             x_slice.max()]).max()
+        vmin, vmax = z_slice.min(), z_slice.max()
     else:
         vmin, vmax = manual_vminvmax
+
+    # Base Image Plotting
     axes[0].imshow(z_slice, cmap=cmap, aspect=scale[1] / scale[2], origin='upper', vmin=vmin, vmax=vmax)
-    axes[0].set_title(z_title)
     axes[1].imshow(y_slice, cmap=cmap, aspect=scale[0] / scale[2], origin='lower', vmin=vmin, vmax=vmax)
-    axes[1].set_title(y_title)
     axes[2].imshow(x_slice, cmap=cmap, aspect=scale[0] / scale[1], origin='lower', vmin=vmin, vmax=vmax)
-    axes[2].set_title(x_title)
 
-    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
-                        ax=axes, orientation="vertical", fraction=0.02, pad=0.05)
-    cbar.set_label(cmap_label)
+    for ax, title in zip(axes, [z_title, y_title, x_title]):
+        ax.set_title(title)
 
+    # 4. Mask Overlays
     if thresh_mask is not None:
-        axes[0].imshow(thresh_mask[z_i, :, :] > 0, cmap="Reds", aspect=scale[1] / scale[2], origin='upper',
-                       alpha=thresh_alpha)
-        axes[1].imshow(thresh_mask[:, y_i, :] > 0, cmap="Reds", aspect=scale[0] / scale[2], origin='lower',
-                       alpha=thresh_alpha)
-        axes[2].imshow(thresh_mask[:, :, x_i] > 0, cmap="Reds", aspect=scale[0] / scale[1], origin='lower',
-                       alpha=thresh_alpha)
+        if max_proj:
+            t_z, t_y, t_x = np.max(thresh_mask, axis=0), np.max(thresh_mask, axis=1), np.max(thresh_mask, axis=2)
+        else:
+            t_z, t_y, t_x = thresh_mask[z_i, :, :], thresh_mask[:, y_i, :], thresh_mask[:, :, x_i]
+
+        axes[0].imshow(t_z > 0, cmap="Reds", aspect=scale[1] / scale[2], origin='upper', alpha=thresh_alpha)
+        axes[1].imshow(t_y > 0, cmap="Reds", aspect=scale[0] / scale[2], origin='lower', alpha=thresh_alpha)
+        axes[2].imshow(t_x > 0, cmap="Reds", aspect=scale[0] / scale[1], origin='lower', alpha=thresh_alpha)
+
+    # Mesh & Normal Overlays
     if meshes is not None:
         if mesh_colors is None:
             mesh_colors = ["red" for _ in range(len(meshes))]
+
         for i, mesh in enumerate(meshes):
             pts = mesh.vertices.copy()
-            pts_z, pts_y, pts_x = pts[:, 0], pts[:, 1], pts[:, 2]
-            zmask = abs(pts_z - z_i * scale[0]) < slice_depth
-            ymask = abs(pts_y - y_i * scale[1]) < slice_depth
-            xmask = abs(pts_x - x_i * scale[2]) < slice_depth
 
-            axes[0].scatter(pts_x[zmask] / scale[2], pts_y[zmask] / scale[1], c=mesh_colors[i], s=mesh_thick,
-                            alpha=mesh_alpha)
-            axes[1].scatter(pts_x[ymask] / scale[2], pts_z[ymask] / scale[0], c=mesh_colors[i], s=mesh_thick,
-                            alpha=mesh_alpha)
-            axes[2].scatter(pts_y[xmask] / scale[1], pts_z[xmask] / scale[0], c=mesh_colors[i], s=mesh_thick,
-                            alpha=mesh_alpha)
+            if max_proj:
+                zmask = ymask = xmask = np.ones(len(pts), dtype=bool)
+                idx_z = idx_y = idx_x = slice(None, None, mesh_interval)
+            else:
+                zmask = abs(pts[:, 0] - z_i * scale[0]) < slice_depth
+                ymask = abs(pts[:, 1] - y_i * scale[1]) < slice_depth
+                xmask = abs(pts[:, 2] - x_i * scale[2]) < slice_depth
+                idx_z = idx_y = idx_x = slice(None)
+            axes[0].scatter(pts[zmask, 2][idx_z] / scale[2], pts[zmask, 1][idx_z] / scale[1],
+                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+            axes[1].scatter(pts[ymask, 2][idx_y] / scale[2], pts[ymask, 0][idx_y] / scale[0],
+                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+            axes[2].scatter(pts[xmask, 1][idx_x] / scale[1], pts[xmask, 0][idx_x] / scale[0],
+                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+
             if show_mesh_normals:
                 norms = mesh.vertex_normals.copy()
-                norms_z, norms_y, norms_x = norms[:, 0], norms[:, 1], norms[:, 2]
 
-                # Z-Slice
-                axes[0].quiver((pts_x[zmask] / scale[2])[::normal_vecfreq],
-                               (pts_y[zmask] / scale[1])[::normal_vecfreq],
-                               (norms_x[zmask] / scale[2])[::normal_vecfreq],
-                               (norms_y[zmask] / scale[1])[::normal_vecfreq],
-                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
-                               angles='xy', scale_units='xy')
-
-                # Y-Slice
-                axes[1].quiver((pts_x[ymask] / scale[2])[::normal_vecfreq],
-                               (pts_z[ymask] / scale[0])[::normal_vecfreq],
-                               (norms_x[ymask] / scale[2])[::normal_vecfreq],
-                               (norms_z[ymask] / scale[0])[::normal_vecfreq],
-                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
-                               angles='xy', scale_units='xy')
-
-                # X-Slice
-                axes[2].quiver((pts_y[xmask] / scale[1])[::normal_vecfreq],
-                               (pts_z[xmask] / scale[0])[::normal_vecfreq],
-                               (norms_y[xmask] / scale[1])[::normal_vecfreq],
-                               (norms_z[xmask] / scale[0])[::normal_vecfreq],
-                               color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
-                               angles='xy', scale_units='xy')
-
+                for ax_idx, mask, ix, iy, sx, sy in [(0, zmask, 2, 1, scale[2], scale[1]),
+                                                     (1, ymask, 2, 0, scale[2], scale[0]),
+                                                     (2, xmask, 1, 0, scale[1], scale[0])]:
+                    axes[ax_idx].quiver(pts[mask, ix][::normal_interval] / sx, pts[mask, iy][::normal_interval] / sy,
+                                        norms[mask, ix][::normal_interval] / sx,
+                                        norms[mask, iy][::normal_interval] / sy,
+                                        color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
+                                        angles='xy', scale_units='xy')
+    # Slice Lines
     if not max_proj:
         axes[0].axhline(y=y_i, linestyle="--", alpha=slice_line_alpha)
         axes[0].axvline(x=x_i, linestyle="--", alpha=slice_line_alpha)
@@ -206,26 +197,38 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 3), sl
         axes[2].axhline(y=z_i, linestyle="--", alpha=slice_line_alpha)
         axes[2].axvline(x=y_i, linestyle="--", alpha=slice_line_alpha)
 
-    axes[0].set_xlabel(f'X ({unit})')
-    axes[0].set_xticks(np.linspace(0, img.shape[2], 5))
-    axes[0].set_xticklabels(np.round(axes[0].get_xticks() * scale[2], 2))
-    axes[0].set_ylabel(f'Y ({unit})')
-    axes[0].set_yticks(np.linspace(0, img.shape[1], 5))
-    axes[0].set_yticklabels(np.round(axes[0].get_yticks() * scale[1], 2))
+    if show_scalebar:
+        auto_len = int(10 ** np.round(np.log10(0.2 * max(np.array(img.shape) * np.array(scale)))))
+        axes_configs = [(axes[0], z_slice, scale[2], True, 'X', 'Y'),
+                        (axes[1], y_slice, scale[2], False, 'X', 'Z'),
+                        (axes[2], x_slice, scale[1], False, 'Y', 'Z')]
+        for ax, s_data, x_sc, is_up, xlab, ylab in axes_configs:
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlabel(f"{xlab}")
+            ax.set_ylabel(f"{ylab}")
+            h, w = s_data.shape
+            auto_len_px = auto_len / x_sc
+            x_e = w - (w * 0.05)
+            x_s = x_e - auto_len_px
+            y_b = h - (h * 0.08) if is_up else (h * 0.08)
+            y_t = y_b - (h * 0.05) if is_up else y_b + (h * 0.05)
+            ax.plot([x_s, x_e], [y_b, y_b], color=scalebar_colour, lw=2.5)
+            ax.text(x_s + auto_len_px / 2, y_t, f"{auto_len} {unit}",
+                    color=scalebar_colour, fontsize=scalebar_fontsize,
+                    ha='center', va='center', fontweight='bold')
+    else:
+        for i, (ax, xlab, ylab) in enumerate(zip(axes, ['X', 'X', 'Y'], ['Y', 'Z', 'Z'])):
+            ax.set_xlabel(f"{xlab} ({unit})")
+            ax.set_ylabel(f"{ylab} ({unit})")
+            ax.set_xticks(np.linspace(0, img.shape[2] if i < 2 else img.shape[1], 5))
+            ax.set_xticklabels(np.round(ax.get_xticks() * (scale[2] if i < 2 else scale[1]), 1))
+            ax.set_yticks(np.linspace(0, img.shape[1] if i == 0 else img.shape[0], 5))
+            ax.set_yticklabels(np.round(ax.get_yticks() * (scale[1] if i == 0 else scale[0]), 1))
 
-    axes[1].set_xlabel(f'X ({unit})')
-    axes[1].set_xticks(np.linspace(0, img.shape[2], 5))
-    axes[1].set_xticklabels(np.round(axes[1].get_xticks() * scale[2], 2))
-    axes[1].set_ylabel(f'Z ({unit})')
-    axes[1].set_yticks(np.linspace(0, img.shape[0], 5))
-    axes[1].set_yticklabels(np.round(axes[1].get_yticks() * scale[0], 2))
-
-    axes[2].set_xlabel(f'Y ({unit})')
-    axes[2].set_xticks(np.linspace(0, img.shape[1], 5))
-    axes[2].set_xticklabels(np.round(axes[2].get_xticks() * scale[1], 2))
-    axes[2].set_ylabel(f'Z ({unit})')
-    axes[2].set_yticks(np.linspace(0, img.shape[0], 5))
-    axes[2].set_yticklabels(np.round(axes[2].get_yticks() * scale[0], 2))
+    cbar = fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
+                        ax=axes, orientation="vertical", fraction=0.02, pad=0.05)
+    cbar.set_label(cmap_label)
 
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
@@ -331,7 +334,7 @@ def plot_scatter(x, y, xlabel, ylabel, title, vert_line=None, xlim=None, ylim=No
         plt.close()
 
 
-def plot_matrix(matrix, unit="px", colorbar=False, cmap="twilight", figsize=(4, 3), savefig="", dpi=200,
+def plot_matrix(matrix, unit, colorbar=False, cmap="twilight", figsize=(4, 3), savefig="", dpi=200,
                 title=None, origin="upper", cmap_limits=None, cmap_label="", remove_axes=False, scale=(1, 1, 1),
                 hidefig=False):
     fig, ax = plt.subplots(figsize=figsize)
@@ -373,7 +376,7 @@ def get_shuffled_cmap(mask, cmap_name="nipy_spectral"):
     return plt.cm.colors.ListedColormap(colors)
 
 
-def plot_img_2d_masks(matrix, segmentation_mask, unit="px", figsize=(4, 3), savefig="", dpi=200,
+def plot_img_2d_masks(matrix, segmentation_mask, unit, figsize=(4, 3), savefig="", dpi=200,
                       title="", origin="upper", cmap_label="", remove_axes=False, scale=(1, 1, 1),
                       hidefig=False, alpha=0.7, cmap="nipy_spectral", mask_outline="black"):
     masks, outlines = segmentation_mask
@@ -408,9 +411,9 @@ def plot_img_2d_masks(matrix, segmentation_mask, unit="px", figsize=(4, 3), save
         plt.close()
 
 
-def plot_matrix_vectors(x, y, angle_field, matrix, veclength=1, title=None, figsize=(4, 3),
+def plot_matrix_vectors(x, y, angle_field, matrix, unit, veclength=1, title=None, figsize=(4, 3),
                         savefig="", dpi=200, vec_colors=None, matrix_cmap="Greys_r", vec_cmap="Spectral",
-                        cbar_vector_label="", cbar_matrix_label="", matrix_origin="upper", unit="px",
+                        cbar_vector_label="", cbar_matrix_label="", matrix_origin="upper",
                         remove_axes=False, scale=(1, 1, 1), img_cmap_limits=None, vec_cmap_limits=None, hidefig=False):
     fig, ax = plt.subplots(figsize=figsize)
     if title is not None:
@@ -490,8 +493,8 @@ def plot_slice_heatmap(coords, values, img_dim, img_scale, pt_size=20, grid_n=40
         plt.close()
 
 
-def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_idxs, ap_orth_binned_idxs,
-                       cmap="tab20", unit="px", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2, hidefig=False,
+def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_idxs, ap_orth_binned_idxs, unit,
+                       cmap="tab20", savefig="", dpi=200, figsize=(14, 6), pt_size=0.2, hidefig=False,
                        vmin_vmax_par=None, vmin_vmax_orth=None):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
@@ -531,7 +534,7 @@ def plot_director_bins(ap_par_binned_dirs, ap_orth_binned_dirs, ap_par_binned_id
         plt.close()
 
 
-def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 1, 1), unit="px", savefig="",
+def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, unit, scale=(1, 1, 1), savefig="",
                            dpi=200, figsize=(14, 6), curvewidth=3, pt_size=10, im_alpha=0.6, hidefig=False):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
     for ax, s_values, title, label in zip(
@@ -565,8 +568,8 @@ def plot_curve_projections(img, curve, pts, s_parallel, s_orthogonal, scale=(1, 
 
 def plot_binned_ap_results_horizontal(img, curve, ap_par_binned_s_2d_weighted, ap_orth_binned_s_2d_weighted,
                                       s_parallel_bin_centers, s_orthogonal_bin_centers,
-                                      s_par_orthogonality_weighted, s_orth_orthogonality_weighted,
-                                      figsize=(16, 8), scale=(1, 1, 1), unit="px", savefig="", dpi=200, hidefig=False):
+                                      s_par_orthogonality_weighted, s_orth_orthogonality_weighted, unit,
+                                      figsize=(16, 8), scale=(1, 1, 1), savefig="", dpi=200, hidefig=False):
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(2, 2, width_ratios=[4, 6], height_ratios=[1, 1], wspace=0.2, hspace=0.3)
 
@@ -774,16 +777,14 @@ def plot_vector_field(x, y, u, v, defect, savefigpath="", figsize=(3, 3), dpi=20
 
 def plot_dist_kymograph(distances, intensities, cmap, figsize, unit, savefig="", dpi=200, hidefig=False):
     fig, axes = plt.subplots(1, 2, figsize=figsize)
-    intensities = normalise_range(intensities)
-    axes[0].imshow(intensities, aspect="auto", cmap=cmap, extent=[0, distances.max(), len(intensities), 0])
+    axes[0].imshow(normalise_range(intensities), aspect="auto", cmap=cmap,
+                   extent=[0, distances.max(), len(intensities), 0])
     axes[0].set_ylabel("Sampling Point Index")
-    axes[0].set_xlabel(f"Distance from min Distance ({unit})")
-    axes[1].plot(distances, np.average(intensities, axis=0), "o-")
+    axes[0].set_xlabel(f"Distance from min distance ({unit})")
+    intensities_avg = np.average(intensities, axis=0)
+    axes[1].plot(distances, intensities_avg / intensities_avg.max(), "o-")
     axes[1].set_ylabel("Average Intensity (a.u.)")
-    axes[1].set_xlabel(f"Distance from min Distance ({unit})")
-    mean_intensity = distances[np.argmax(np.average(intensities, axis=0))]
-    axes[1].axvline(x=mean_intensity, label=f"ARGMAX = {round(mean_intensity, 1)} {unit}")
-    axes[1].legend()
+    axes[1].set_xlabel(f"Distance from min distance ({unit})")
     plt.tight_layout()
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
@@ -1280,7 +1281,7 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
         if not hide_vectors:
             viewer.add_vectors(
                 data=np.stack((mesh.vertices[::vec_freq], mesh.vertex_normals[::vec_freq]), axis=1),
-                edge_color=mesh_colors[i], edge_width=vec_edge_width,
+                edge_color=mesh_colors[i], edge_width=vec_edge_width, blending="translucent_no_depth",
                 length=vec_length, opacity=1.0, name=f"{mesh_titles[i]}_normals"
             )
     viewer.dims.axis_labels = ("Z", "Y", "X")

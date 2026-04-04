@@ -10,6 +10,7 @@ import os
 from itertools import combinations
 
 import numpy as np
+import matplotlib.pyplot as plt
 import orientationpy as op
 import pyvista as pv
 import scipy.sparse as sp
@@ -24,8 +25,8 @@ from skimage.filters import threshold_yen
 from sklearn.neighbors import KDTree as KDTreeSklearn
 from tifffile import TiffFile
 
-from scripts.datahandler import load_array, clean_mesh
-from scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
+from module_scripts.datahandler import load_array
+from module_scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
 
 
 #################
@@ -212,6 +213,24 @@ def get_tiff_scaling(tif):
     return img_scale
 
 
+def load_img_unit(path, default_unit="um"):
+    print(f">> Loading {path}...")
+    if not os.path.exists(path):
+        print(f"[!] Image does not exist, aborting !")
+        return None
+    with TiffFile(path) as tif:
+        try:
+            unit = next(line for line in tif.pages[0].tags.get('ImageDescription', None).value.splitlines() if
+                        line.startswith("unit=")).split('=')[1]
+            if unit == "micron":
+                unit = "um"
+            print(f"Found unit = {unit} !")
+            return unit
+        except:
+            print(f"[!] Could not find unit, resorting to standard {default_unit}...")
+            return default_unit
+
+
 def load_img_dimensions(path):
     print(f">> Loading {path}...")
     if not os.path.exists(path):
@@ -239,7 +258,7 @@ def load_img_scaling(path):
         return img_scale
 
 
-def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_unit=None, custom_scaling=None,
+def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_scaling=None,
                      reduce_xy=1, reduce_z=1):
     print(f">> Loading {path}...")
     if not os.path.exists(path):
@@ -260,10 +279,7 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
         print(f"Found image scale = {img_scale} !")
 
         # ======== Load Unit ========
-        img_unit = "px"
-        if custom_unit is not None:
-            print(f">> Overwriting unit with {custom_unit}...")
-            img_unit = custom_unit
+        img_unit = load_img_unit(path=path)
 
         # ======== Extract single z-stack ========
         T = shape[axis_map['T']] if 'T' in axis_map else 1
@@ -289,6 +305,11 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
         img_raw = np.asarray(arr[tuple(key)])
         img_dim = img_raw.shape
 
+        if 'Z' not in axis_map:
+            print(f"[!] 2D Image, expanding to 3D...")
+            img_raw = img_raw[np.newaxis, ...]
+            img_dim = img_raw.shape
+
     # ======== Optional: Scaling Override ========
     if custom_scaling is not None:
         print(f">> Overwriting scaling with {custom_scaling}...")
@@ -296,13 +317,17 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
 
     # ======== Reduce resolution if needed by averaging ========
     if reduce_z > 1 or reduce_xy > 1:
+        # Dynamically get current shape (now guaranteed 3D: Z, Y, X)
+        curr_z, curr_y, curr_x = img_raw.shape
+
         if reduce_xy > 1:
             print(f">> Reducing XY resolution by averaging {reduce_xy} pixels...")
-            trimmed_y = (img_dim[1] // reduce_xy) * reduce_xy
-            trimmed_x = (img_dim[2] // reduce_xy) * reduce_xy
+            trimmed_y = (curr_y // reduce_xy) * reduce_xy
+            trimmed_x = (curr_x // reduce_xy) * reduce_xy
             img_raw = img_raw[:, :trimmed_y, :trimmed_x]
+
             new_shape = (
-                img_dim[0],
+                curr_z,
                 trimmed_y // reduce_xy,
                 reduce_xy,
                 trimmed_x // reduce_xy,
@@ -310,19 +335,23 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_uni
             )
             img_raw = img_raw.reshape(new_shape).mean(axis=(2, 4))
             img_scale = (img_scale[0], reduce_xy * img_scale[1], reduce_xy * img_scale[2])
-        img_dim = img_raw.shape
-        if reduce_z > 1:
+
+        # Refresh shape info for Z-reduction step
+        curr_z, curr_y, curr_x = img_raw.shape
+
+        if reduce_z > 1 and curr_z > 1:
             print(f">> Reducing Z resolution by averaging {reduce_z} pixels...")
-            trimmed_z = (img_dim[0] // reduce_z) * reduce_z
+            trimmed_z = (curr_z // reduce_z) * reduce_z
             img_raw = img_raw[:trimmed_z, :, :]
             new_shape = (
                 trimmed_z // reduce_z,
                 reduce_z,
-                img_dim[1],
-                img_dim[2],
+                curr_y,
+                curr_x,
             )
             img_raw = img_raw.reshape(new_shape).mean(axis=1)
             img_scale = (reduce_z * img_scale[0], img_scale[1], img_scale[2])
+
         img_dim = img_raw.shape
         print(f"Reduced shape = {img_dim} | scale = {img_scale} | size = {round(img_raw.nbytes / 1e6, 2)} MB !")
 
@@ -375,15 +404,12 @@ def fill_holes_img(img):
 #############################
 # MESH SEGMENTATION MODULES #
 #############################
-def marching_cubes(img, scale, level, step_size, allow_degenerate=False, clean=True):
+def marching_cubes(img, scale, level, step_size, allow_degenerate=False):
     print(f">> Extracting mesh(es) using marching cubes algorithm with box size {step_size}...")
     verts, faces, normals, _ = measure.marching_cubes(volume=img, level=level, spacing=scale,
                                                       step_size=step_size, allow_degenerate=allow_degenerate)
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, vertex_normals=-normals)
-    if clean:
-        return clean_mesh(mesh)
-    else:
-        return mesh
+    return mesh
 
 
 def sel_submesh(mesh, mask):
@@ -541,7 +567,7 @@ def generate_ellipsoid(params, num_points):
 #########################
 def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", filter_boundary=False, debug=False,
                          gauss_crop_range=None, mean_crop_range=None, boundary_excl_factor=0.1,
-                         use_original_vertices=False):
+                         use_original_vertices=False, custom_basis=None):
     print(f">> Calculating curvature for {num_sample}/{len(mesh.vertices)} vertices of mesh...")
     random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
     if use_original_vertices:
@@ -565,13 +591,18 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         neigh_idxs, valid_idxs = filter_valid_patches(verts=verts, idxs_neigh=neigh_idxs, factor=boundary_excl_factor)
         N = len(neigh_idxs)
         random_idxs = random_idxs[valid_idxs]
-    tan_x_cov, tan_y_cov = create_tangential_basis(normals=normals, hide_output=True)
+    if custom_basis is not None:
+        print("[!] Using custom basis for curvature...")
+        tan_x_cov, tan_y_cov = custom_basis[0][random_idxs], custom_basis[1][random_idxs]
+    else:
+        print("[!] Using arbitrary tangential basis for curvature...")
+        tan_x_cov, tan_y_cov = create_tangential_basis(normals=normals, hide_output=True)
     g = np.array([gmetric(tan_x_cov[i], tan_y_cov[i]) for i in range(N)])
     g_inv = np.array([np.linalg.inv(g[i]) for i in range(N)])
     inter_calc = np.array(
         [covariant2contravariant(tan_x_cov[i], tan_y_cov[i]) for i in range(N)])
     tan_x_contr, tan_y_contr = inter_calc[:, 0, :], inter_calc[:, 1, :]
-    C_gauss, C_mean = [], []
+    C_gauss, C_mean, C_tensors, C_tensors_mixed = [], [], [], []
     for i in range(N):
         C = np.zeros((2, 2))
         z_nbs, xi_nbs, eta_nbs = [], [], []
@@ -592,6 +623,8 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         if len(xi_nbs) < 3:
             C_gauss.append(np.nan)
             C_mean.append(np.nan)
+            C_tensors.append(np.full((2, 2), np.nan))
+            C_tensors_mixed.append(np.full((2, 2), np.nan))
             continue
         S = np.array([[xi ** 2, xi * eta, eta ** 2] for xi, eta in zip(xi_nbs, eta_nbs)])
         b = np.array(z_nbs)
@@ -600,19 +633,22 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         C[0, 1] = -v[1]
         C[1, 0] = -v[1]
         C[1, 1] = -2 * v[2]
+        C_tensors.append(C.copy())
         C_mixed = np.dot(C, g_inv[i])
+        C_tensors_mixed.append(C_mixed.copy())
         mean_curvature = np.trace(C_mixed) / 2
         gauss_curvature = np.linalg.det(C) / np.linalg.det(g[i])
         C_gauss.append(gauss_curvature)
         C_mean.append(mean_curvature)
-    C_gauss, C_mean = np.asarray(C_gauss), np.asarray(C_mean)
+    C_gauss, C_mean, C_tensors, C_tensors_mixed = np.asarray(C_gauss), np.asarray(C_mean), np.asarray(
+        C_tensors), np.asarray(C_tensors_mixed)
     if debug:
         print(
             f"Gauss: AVG = {np.nanmean(C_gauss)} | MIN = {np.nanmin(C_gauss)} | MAX = {np.nanmax(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
         print(
             f"Mean: AVG = {np.nanmean(C_mean)} | MIN = {np.nanmin(C_mean)} | MAX = {np.nanmax(C_mean)} | None? = {np.isnan(C_mean).sum()}")
 
-    Gauss_idxs = random_idxs
+    Gauss_idxs = random_idxs.copy()
     if gauss_crop_range is not None:
         print(f">> Cropping Gauss to min {gauss_crop_range[0]}, max {gauss_crop_range[1]}...")
         crop_mask = (gauss_crop_range[0] < C_gauss) & (C_gauss < gauss_crop_range[1]) & (~np.isnan(C_gauss))
@@ -621,7 +657,7 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
             print(
                 f"Gauss: AVG = {np.nanmean(C_gauss)} | MIN = {np.nanmin(C_gauss)} | MAX = {np.nanmax(C_gauss)} | None? = {np.isnan(C_gauss).sum()}")
 
-    mean_idxs = random_idxs
+    mean_idxs = random_idxs.copy()
     if mean_crop_range is not None:
         print(f">> Cropping Mean to min {mean_crop_range[0]}, max {mean_crop_range[1]}...")
         crop_mask = (mean_crop_range[0] < C_mean) & (C_mean < mean_crop_range[1]) & (~np.isnan(C_mean))
@@ -629,8 +665,8 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         if debug:
             print(
                 f"Mean: AVG = {np.nanmean(C_mean)} | MIN = {np.nanmin(C_mean)} | MAX = {np.nanmax(C_mean)} | None? = {np.isnan(C_mean).sum()}")
-
-    return C_gauss, C_mean, Gauss_idxs, mean_idxs
+    tensor_idxs = random_idxs.copy()
+    return C_gauss, C_mean, Gauss_idxs, mean_idxs, C_tensors, C_tensors_mixed, tensor_idxs
 
 
 def density_estimate(mesh, k=30, debug=False, crop_range=None):
@@ -711,7 +747,7 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
     return geodesic_distance
 
 
-def select_geodesic_defects(order, mesh, idxs_sel, dist_cutoff=50, max_candidates=10, unit="px"):
+def select_geodesic_defects(order, mesh, idxs_sel, unit, dist_cutoff=50, max_candidates=10):
     candidate_order = np.argsort(order)[:max_candidates]
     selected = []
 
@@ -984,7 +1020,8 @@ def tan_interp_batch(coords, intensities, grid_size):
     return grid_x, grid_y, grid_z
 
 
-def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False, debug_idx=None, debug_line_length=5):
+def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, unit, debug=False, debug_idx=None,
+                         debug_line_length=5):
     dir_vec = np.zeros(shape=(len(tan_x), 3))
     theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
 
@@ -1000,7 +1037,7 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, debug=False
         )
         plot_interp_grid(grid_x, grid_y, debug_grid_z, theta=theta_center, linelength=debug_line_length)
         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
-                    remove_axes=True)
+                    remove_axes=True, unit=unit)
     else:
         theta_mid_idx = theta_all.shape[1] // 2
         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
@@ -1261,3 +1298,101 @@ def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, 
                                                                     neigh_idxs=joint_neigh_idxs)
     crisscross_mag = 1 - S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)]
     return crisscross_mag, directors_2dcurved_avg_1, directors_2dcurved_avg_2
+
+
+def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
+                                 defect_idxs_calc, m_charge, patch_type, patch_size,
+                                 show_profile=False, hidefig=True):
+    pol_positions, pol_vectors, pol_idxs = [], [], []
+    directors_v = directors[:, 3:6]
+    directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
+
+    for d_idx, charge in zip(defect_idxs_calc, m_charge):
+        s = np.round(charge * 2) / 2
+        if not (abs(s) == 0.5):
+            continue
+
+        core_idx_sel = idxs_sel[d_idx]
+        core_vertex = mesh.vertices[core_idx_sel]
+
+        # --- Neighborhood Retrieval ---
+        if patch_type == "radius":
+            neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
+                                                 custom_probes=[core_vertex],
+                                                 r=patch_size)[0]
+        elif patch_type == "nearest":
+            neigh_idxs_sel = coord_search_neighbours(mesh.vertices[idxs_sel],
+                                                     custom_probes=[core_vertex],
+                                                     k=patch_size)[0]
+        else:
+            raise ValueError(f"Unknown patch type: {patch_type}")
+
+        if len(neigh_idxs_sel) < 10:
+            continue
+
+        # --- Local Basis (t1, t2) ---
+        normal = vertex_normals[core_idx_sel]
+        normal /= np.linalg.norm(normal)
+        t1 = np.cross(normal, [1, 0, 0])
+        if np.linalg.norm(t1) < 1e-6:
+            t1 = np.cross(normal, [0, 1, 0])
+        t1 /= np.linalg.norm(t1)
+        t2 = np.cross(normal, t1)
+
+        # --- Project Positions and Directors ---
+        rel_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]] - core_vertex
+        # Spatial angle (phi in Function 2)
+        phi_spatial = np.arctan2(rel_pos @ t2, rel_pos @ t1)
+
+        # Director angle (theta in Function 2)
+        neigh_dirs = directors_v[neigh_idxs_sel]
+        d_proj_x = neigh_dirs @ t1
+        d_proj_y = neigh_dirs @ t2
+        theta_dir = np.arctan2(d_proj_y, d_proj_x)
+
+        # --- MATCHING MATH: Complex Phase Extraction ---
+        # Calculation: Z = mean( exp( i * (2*theta - 2*s*phi) ) )
+        # This finds the intrinsic phase phi_0
+        Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * s * phi_spatial)))
+        phi_0 = np.angle(Z) / 2
+
+        current_pols_3d = []
+
+        if s > 0:  # +1/2 Comet
+            alpha = 2 * phi_0
+            pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
+            current_pols_3d.append(pol)
+        else:  # -1/2 Trefoil
+            for m in range(3):
+                alpha = (2.0 / 3.0) * (phi_0 + m * np.pi)
+                pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
+                current_pols_3d.append(pol)
+        for p in current_pols_3d:
+            pol_positions.append(core_vertex)
+            pol_vectors.append(p)
+            pol_idxs.append(d_idx)
+
+        if show_profile:
+            fig, ax = plt.subplots(figsize=(5, 5))
+            ax.set_aspect('equal')
+            ax.set_title(f"Defect {d_idx}, s={s}")
+
+            x_2d = rel_pos @ t1
+            y_2d = rel_pos @ t2
+            scale = 0.15 * patch_size
+
+            ax.quiver(x_2d, y_2d, d_proj_x * scale, d_proj_y * scale,
+                      color='blue', alpha=0.3)
+
+            for p in current_pols_3d:
+                p2d = [p @ t1, p @ t2]
+                ax.quiver(0, 0, p2d[0] * scale * 3, p2d[1] * scale * 3,
+                          color='red', width=0.02, pivot='tail')
+
+            ax.scatter(0, 0, color='k', marker='x')
+            if not hidefig:
+                plt.show()
+            else:
+                plt.close()
+
+    return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)

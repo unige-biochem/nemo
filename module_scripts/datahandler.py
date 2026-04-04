@@ -12,8 +12,8 @@ import re
 import imageio.v2 as imageio
 import numpy as np
 import pandas as pd
-import tifffile
 import trimesh
+from tifffile import tifffile
 
 
 #####################
@@ -50,11 +50,37 @@ def save_array(array, name, header, folderpath, delimiter=","):
 # IMAGE I/O MODULES #
 #####################
 
+def save_tiff(array, filepath, img_unit, img_scale=(1.0, 1.0, 1.0)):
+    z_pix, y_pix, x_pix = img_scale
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    meta = {
+        'unit': img_unit,
+        'spacing': z_pix,
+    }
+    if array.ndim == 5:
+        # Standard: Time, Z, Channel, Y, X
+        n_t, n_z, n_c, n_y, n_x = array.shape
+        meta.update({'axes': 'TZCYX', 'frames': n_t, 'slices': n_z, 'channels': n_c})
 
-def save_tiff(array, filepath):
-    print(f">> Saving tiff {filepath}...")
-    create_dir(os.path.dirname(filepath))
-    tifffile.imwrite(filepath, array.astype(np.float32))
+    elif array.ndim == 4:
+        n_z, n_c, n_y, n_x = array.shape
+        meta.update({'axes': 'ZCYX', 'slices': n_z, 'channels': n_c})
+        print(f">> 4D detected: Interpreting as Z={n_z}, C={n_c}")
+
+    elif array.ndim == 3:
+        n_z, n_y, n_x = array.shape
+        meta.update({'axes': 'ZYX', 'slices': n_z})
+    else:
+        raise ValueError(f"Unsupported array shape: {array.shape}")
+
+    tifffile.imwrite(
+        filepath,
+        array.astype(np.float32),
+        imagej=True,
+        resolution=(1.0 / x_pix, 1.0 / y_pix),
+        metadata=meta
+    )
+    print(f">> Saved {meta['axes']} to {filepath} with scaling {img_scale} !")
 
 
 def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
@@ -98,38 +124,19 @@ def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
 # MESH I/O MODULES #
 ####################
 
-def clean_mesh(mesh):
-    mesh = mesh.copy()
-    verts, faces, normals = mesh.vertices, mesh.faces, mesh.vertex_normals
-    invalid_normals = np.linalg.norm(normals, axis=1) < 0.9
-    valid_verts = verts[~invalid_normals]
-    valid_normals = normals[~invalid_normals]
-    vertex_map = np.cumsum(~invalid_normals) - 1
-    invalid_face_mask = np.any(invalid_normals[faces], axis=1)
-    valid_faces = vertex_map[faces[~invalid_face_mask]]
-    if np.sum(invalid_normals) > 0:
-        print(f"[!] Cleaned {np.sum(invalid_normals)} out of {len(mesh.vertex_normals)} !")
-    mesh_cleaned = trimesh.Trimesh(vertices=valid_verts, faces=valid_faces, vertex_normals=valid_normals)
-    return mesh_cleaned
 
-
-def load_mesh(filepath, recalc_normals, clean=False):
+def load_mesh(filepath):
     print(f">> Loading mesh {filepath}...")
     try:
         mesh = trimesh.load(filepath)
     except:
         print(f"[!] Could not load mesh {filepath}!")
         return None
-    if recalc_normals:
-        print(f">> Recomputing normals ...")
-        mesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh.vertices),
-                                                                       faces=mesh.faces,
-                                                                       face_normals=mesh.face_normals,
-                                                                       face_angles=mesh.face_angles)
-    if clean:
-        return clean_mesh(mesh=mesh)
-    else:
-        return mesh
+    mesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh.vertices),
+                                                                   faces=mesh.faces,
+                                                                   face_normals=mesh.face_normals,
+                                                                   face_angles=mesh.face_angles)
+    return mesh
 
 
 def save_mesh(mesh, filepath):

@@ -6,21 +6,19 @@ ROOT="/Volumes/roux/AurelienRouxLab/Oriol/Experiments 2 photon with filter/Gastr
 OUT_ROOT="/Volumes/roux/AurelienRouxLab/Oriol/Experiments 2 photon with filter/URI_25022026_PR_NEMO/EXP4_filter_membrane"
 
 # ==============================
-SUBFOLDER="all_nemo_figures"
+SUBFOLDER="collected_nemo_figures"
 FILE_NAMES=(
-"3d_midline_curve.png"
-"rho-profile.png"
-"cylindrical_projection.png"
-"cylindrical_projection_cropped.png"
-"sliced_maxproj_raw.png"
-"sliced_raw.png"
-"sliced_raw_sampling-mesh.png"
-"sliced_raw_sampling-mesh_maxproj.png"
-"q-sphi-by-phi-profile-um_cropped.png"
-"q-sphi-profile-um_cropped.png"
-"S-profile-um_cropped.png"
+"sliced_raw.pdf"
+"sliced_maxproj_raw.pdf"
+"sliced_raw_sampling-mesh.pdf"
+"sliced_raw_sampling-mesh_maxproj.pdf"
 "sampling_mesh.ply"
-"distgraph_broad-scan.png"
+"sampling_mesh.ply_gauss_curv_r-50.0um.pdf"
+"sampling_mesh.ply_mean_curv_r-50.0um.pdf"
+"3d_midline_curve.pdf"
+"rho-profile.pdf"
+"cylindrical_projection.pdf"
+"cylindrical_projection_cropped.pdf"
 )
 # ==============================
 
@@ -41,30 +39,24 @@ export OUTDIR
 find "$ROOT" -type f \( "${NAME_EXPR[@]}" \) \
 -exec bash -c '
     file_path="$1"
-
-    # 1. Get path relative to ROOT
-    # This removes the ROOT prefix from the string
     rel_path="${file_path#$ROOT/}"
-
-    # 2. Split the relative path into an array using "/" as delimiter
     IFS="/" read -ra parts <<< "$rel_path"
 
-    # 3. Assign metadata based on top-level folder positions
-    # Structure: ROOT/TIME/SIZE/GASTRULOID/...
+    # Standard Metadata
     time_val="${parts[0]}"
     size_val="${parts[1]}"
     gastruloid_val="${parts[2]}"
-
-    # 4. Get the filename
     base_name=$(basename "$file_path")
 
-    # 5. Determine if we are in a layer subfolder to avoid name collisions
-    # (Optional: Add the layer label to the filename if it exists)
-    if [[ ${#parts[@]} -gt 4 ]]; then
-        # If parts[3] is "results" and parts[5] is a layer, you might want it
-        # but for now, we follow your requested pattern:
-        new_name="${time_val}_${size_val}_${gastruloid_val}_${base_name}"
+    # Check if the file is inside a specific projection/layer subfolder
+    # Based on ROOT/TIME/SIZE/GASTRULOID/results/LAYER_LABEL/filename
+    # parts[0]=TIME, [1]=SIZE, [2]=GAST, [3]=results, [4]=LAYER_LABEL
+
+    if [[ ${#parts[@]} -ge 5 && "${parts[3]}" == "results" ]]; then
+        layer_val="${parts[4]}"
+        new_name="${time_val}_${size_val}_${gastruloid_val}_${layer_val}_${base_name}"
     else
+        # Fallback if it is a top-level gastruloid file (like a mesh or midline)
         new_name="${time_val}_${size_val}_${gastruloid_val}_${base_name}"
     fi
 

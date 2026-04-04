@@ -18,9 +18,10 @@ from skimage import measure
 from skimage.morphology import skeletonize_3d, medial_axis
 from sklearn.decomposition import PCA
 
-from scripts.analysis import coord_search_radius, avg_tan_nem_tens
-from scripts.datahandler import create_resdirs, load_mesh, load_array, save_array
-from scripts.visuals import plot_qsphi_profiles, plot_qsphi_profiles_separated_phi, plot_scatter, plot_rho_profile, \
+from module_scripts.analysis import coord_search_radius, avg_tan_nem_tens
+from module_scripts.datahandler import create_resdirs, load_mesh, load_array, save_array
+from module_scripts.visuals import plot_qsphi_profiles, plot_qsphi_profiles_separated_phi, plot_scatter, \
+    plot_rho_profile, \
     plot_cylindrical_projection, plot_s_sphi_profile
 
 
@@ -260,22 +261,22 @@ def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
     return values[keep_mask]
 
 
-def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi=-np.pi / 3, high_cutoff_phi=np.pi / 3,
-                     profile_bins=30, hidefig=True, img_unit="um"):
+def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_cutoff_phi=-np.pi / 3,
+                     high_cutoff_phi=np.pi / 3,
+                     profile_bins=30, hidefig=True):
     print(f"Selected image path: {img_path}")
     if not os.path.exists(img_path):
         print(f"Image path does not exist: {img_path} !")
         return None
     # ==== Create Folder Structure ====
-    resdata_dir, resfig_dir = create_resdirs(img_path)
+    resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
     # ==== Load Projected Result ====
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     proj_layer = load_array("intensities", folderpath=resdata_dir_layer)
     proj_layer /= proj_layer.max()
-    layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"),
-                           recalc_normals=False, clean=False)
+    layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
     # ==== Load 2D+ Directors ====
     idxs_sel = load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
@@ -299,16 +300,16 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
     plot_scatter(x=layer_mesh_phi, y=proj_layer, title="Projection Intensity vs. Angle", xlabel=r"$\phi$ (rad)",
                  ylabel="Projection Intensity (a.u.)", xlim=[-np.pi, np.pi], hidefig=hidefig,
                  vert_line=[low_cutoff_phi, high_cutoff_phi],
-                 savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.png"))
+                 savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.pdf"))
 
     plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer,
                                 aspect="equal",
                                 hidefig=hidefig,
-                                title=f"Projected Intensities \n{layer_label}", hexsize=300, cmap="inferno",
-                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.png"))
+                                title=f"Projected Intensities \n{layer_label}", hexsize=400, cmap="inferno",
+                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.pdf"))
     plot_rho_profile(mesh_s=layer_mesh_s, mesh_rho=layer_mesh_rho, mesh_phi=layer_mesh_phi,
                      img_unit=img_unit, hidefig=hidefig,
-                     savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}.png"))
+                     savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}.pdf"))
 
     e_s, e_phi, e_rho = create_s_phi_basis(points=directors_2dcurved[:, :3], curve=centerline_fitted,
                                            normals=layer_mesh.vertex_normals[idxs_sel])
@@ -363,12 +364,12 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
     plot_cylindrical_projection(phi=layer_mesh_phi_cropped, rho=layer_mesh_rho_cropped, s=layer_mesh_s_cropped,
                                 colors=proj_layer_cropped,
                                 aspect="equal",
-                                title=f"Cropped Projected Intensities \n{layer_label}", hexsize=300,
+                                title=f"Cropped Projected Intensities \n{layer_label}", hexsize=400,
                                 cmap="inferno", figsize=(10, 5), hidefig=hidefig,
-                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.png"))
+                                savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection_cropped.pdf"))
     plot_rho_profile(mesh_s=layer_mesh_s_cropped, mesh_rho=layer_mesh_rho_cropped, mesh_phi=layer_mesh_phi_cropped,
                      img_unit=img_unit, hidefig=hidefig,
-                     savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}_cropped.png"))
+                     savefig=os.path.join(resfig_dir_layer, f"rho-profile-{img_unit}_cropped.pdf"))
 
     # ==== Tune Curved Nematic Analysis Number of Neighbours ====
     patch_avg = ["radius", q_decomp_radius]
@@ -426,7 +427,7 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
                         Q_ss_mean=q_ss_mean_cropped, Q_phiphi=q_phiphi_cropped,
                         Q_phiphi_mean=q_phiphi_mean_cropped, Q_sphi=q_sphi_cropped, Q_sphi_mean=q_sphi_mean_cropped,
                         y_limits=[-0.5, 0.5], hidefig=hidefig,
-                        savefig=os.path.join(resfig_dir_layer, f"q-sphi-profile-{img_unit}_cropped.png"))
+                        savefig=os.path.join(resfig_dir_layer, f"q-sphi-profile-{img_unit}_{patch_label}_cropped.pdf"))
 
     plot_qsphi_profiles_separated_phi(dir_s=dir_s_cropped, dir_phi=dir_phi_cropped, s_bin_centers=s_bin_centers_cropped,
                                       Q_ss=q_ss_cropped,
@@ -434,10 +435,10 @@ def proj_nem_on_sphi(img_path, layer_label, q_decomp_radius=40.0, low_cutoff_phi
                                       Q_phiphi_mean=q_phiphi_mean_cropped, Q_sphi=q_sphi_cropped,
                                       Q_sphi_mean=q_sphi_mean_cropped,
                                       y_limits=[-0.5, 0.5], savefig=os.path.join(resfig_dir_layer,
-                                                                                 f"q-sphi-by-phi-profile-{img_unit}_cropped.png"))
+                                                                                 f"q-sphi-by-phi-profile-{img_unit}_{patch_label}_cropped.pdf"))
 
     plot_s_sphi_profile(dir_s=dir_s_cropped, s_global=s_2dcurv_sphi_cropped, y_limits=[0, 1], hidefig=hidefig,
-                        savefig=os.path.join(resfig_dir_layer, f"S-profile-{img_unit}_cropped.png"))
+                        savefig=os.path.join(resfig_dir_layer, f"S-profile-{img_unit}_{patch_label}_cropped.pdf"))
     return None
 
 

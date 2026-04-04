@@ -39,16 +39,16 @@ The project is structured as follows:
 
 ```
 NEMO/  
-├── scripts/                         # Folder of Module Scripts
+├── module_scripts/                  # Folder of Module Scripts (Core Library)
 │   ├── analysis.py                  # Image / Mesh Analysis Modules
 │   ├── visuals.py                   # Visualisation Modules
 │   ├── datahandler.py               # Input / Output Data Handling Modules
 │   └── simulation.py                # Simulation Modules
-├── batch_analysis/                  # Folder of Batch Analysis Scripts
-├── extra/                           # Folder of Addditional Analyses
+├── automated_scripts/               # Folder of Automated Analysis Scripts
 ├── color-maps.pdf                   # List of matplotlib cmaps that can be passed to NEMO
 ├── environment.yml                  # Required Python libraries compatible with any conda
-├── nemo_main.ipynb                  # Main Pipeline Workspace Notebook
+├── MAIN.ipynb                       # Main Pipeline Workspace Notebook
+├── tiff_simulator.ipynb             # Generation of synthetic test data
 └── README.md                        # This README
 ```  
 
@@ -92,21 +92,18 @@ jupyter lab
 
 ### Main Notebook
 
-- The primary interface for interactive analysis is the **`nemo_main.ipynb`**. You can open it using Jupyter:
+- The primary interface for interactive analysis is the **`MAIN.ipynb`**. You can open it using Jupyter:
 
 ```bash
-jupyter notebook main.ipynb
+jupyter notebook MAIN.ipynb
 ```
 
-### Batch Analysis
-
-- The **`batch_analysis.py`** script inside the folder **`batch_analysis/`** allows batch processing by combining
-  multiple modules.
 ---
 
 ## 🧩 **Modular Scripts**
 
-The **`scripts/`** folder contains Python scripts with modular functions that can be (re-)combined for batch analysis or
+The **`modle_scripts/`** folder contains Python scripts with modular functions that can be (re-)combined for batch
+analysis or
 used individually within the main notebook.
 
 Each script serves a different purpose, such as image/mesh analysis, data input/output handling, visualisation or
@@ -139,4 +136,4 @@ persons to whom the Software is furnished to do so, subject to the following con
 
 **[!] publication incl. NEMO to be announced asap.  [!]**
 
-2024-2028 Copyright Konstantinos Andreadis 
+© Konstantinos Andreadis 2024 (PhD @ Roux Lab & Salbreux Lab at UNIGE, Switzerland)
