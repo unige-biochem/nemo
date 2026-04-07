@@ -261,7 +261,8 @@ def crop_by_angles(values, angles, angle_low_cutoff, angle_high_cutoff):
     return values[keep_mask]
 
 
-def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_cutoff_phi=-np.pi / 3,
+def proj_nem_on_sphi(img_path, t_select, c_select, layer_label, img_unit, q_decomp_radius=40.0,
+                     low_cutoff_phi=-np.pi / 3,
                      high_cutoff_phi=np.pi / 3,
                      profile_bins=30, hidefig=True):
     print(f"Selected image path: {img_path}")
@@ -302,7 +303,8 @@ def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_
                  vert_line=[low_cutoff_phi, high_cutoff_phi],
                  savefig=os.path.join(resfig_dir_layer, "proj-intensity_vs_phi.pdf"))
 
-    plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer, interp_grid_n=200,
+    plot_cylindrical_projection(phi=layer_mesh_phi, rho=layer_mesh_rho, s=layer_mesh_s, colors=proj_layer,
+                                interp_grid_n=200,
                                 cmap="inferno", title=f"Projected Intensities \n{layer_label}",
                                 savefig=os.path.join(resfig_dir_layer, f"cylindrical_projection.pdf"), hidefig=hidefig)
     plot_rho_profile(mesh_s=layer_mesh_s, mesh_rho=layer_mesh_rho, mesh_phi=layer_mesh_phi,
@@ -397,7 +399,8 @@ def proj_nem_on_sphi(img_path, layer_label, img_unit, q_decomp_radius=40.0, low_
     save_array(np.column_stack((directors_2dcurved_cropped[:, :3], n_avg_2dcurv_sphi_cropped)),
                name=f"n_avg_2dcurv_sphi_cropped_{patch_label}",
                header="x,y,z,vx,vy,vz", folderpath=resdata_dir_layer)
-    np.savez_compressed(os.path.join(resdata_dir_layer, f"q_sphi_full_cropped_{patch_label}"), q_sphi_cropped=q_sphi_full_cropped)
+    np.savez_compressed(os.path.join(resdata_dir_layer, f"q_sphi_full_cropped_{patch_label}"),
+                        q_sphi_cropped=q_sphi_full_cropped)
 
     # ==== Plot Curved Nematic Order ====
     q_sphi_decomposition = decompose_q_sphi(q_sphi=q_sphi_full_cropped, s_coords=dir_s_cropped, num_bins=profile_bins)

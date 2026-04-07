@@ -24,6 +24,7 @@ from matplotlib.colors import ListedColormap, Normalize, BoundaryNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 import matplotlib.tri as tri
+from matplotlib.transforms import offset_copy
 
 #############################################
 # [!!!] Dark/Light Mode for all Plots [!!!] #
@@ -124,9 +125,9 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), sl
     else:
         scalebar_colour = "white"
         z_slice, y_slice, x_slice = img[z_i, :, :], img[:, y_i, :], img[:, :, x_i]
-        z_title = f'Z={np.round(z_i * scale[0], decimals=title_digit_precision)} {unit}'
-        y_title = f'Y={np.round(y_i * scale[1], decimals=title_digit_precision)} {unit}'
-        x_title = f'X={np.round(x_i * scale[2], decimals=title_digit_precision)} {unit}'
+        z_title = rf'Z$\approx${np.round(z_i * scale[0], decimals=title_digit_precision)} {unit}'
+        y_title = rf'Y$\approx${np.round(y_i * scale[1], decimals=title_digit_precision)} {unit}'
+        x_title = rf'X$\approx${np.round(x_i * scale[2], decimals=title_digit_precision)} {unit}'
 
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
@@ -198,7 +199,20 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), sl
         axes[2].axhline(y=z_i, linestyle="--", alpha=slice_line_alpha)
         axes[2].axvline(x=y_i, linestyle="--", alpha=slice_line_alpha)
 
-    from matplotlib.transforms import offset_copy
+    for i, (ax, xlab, ylab) in enumerate(zip(axes, ['X', 'X', 'Y'], ['Y', 'Z', 'Z'])):
+
+        if show_scalebar:
+            ax.set_xlabel(f"{xlab}")
+            ax.set_ylabel(f"{ylab}")
+            ax.set_xticks([])
+            ax.set_yticks([])
+        else:
+            ax.set_xlabel(f"{xlab} ({unit})")
+            ax.set_ylabel(f"{ylab} ({unit})")
+            ax.set_xticks(np.linspace(0, img.shape[2] if i < 2 else img.shape[1], 5))
+            ax.set_xticklabels(np.round(ax.get_xticks() * (scale[2] if i < 2 else scale[1]), 1))
+            ax.set_yticks(np.linspace(0, img.shape[1] if i == 0 else img.shape[0], 5))
+            ax.set_yticklabels(np.round(ax.get_yticks() * (scale[1] if i == 0 else scale[0]), 1))
 
     if show_scalebar:
         r = 0.2 * max(np.array(img.shape) * scale)
@@ -219,14 +233,6 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(20, 5), sl
             ax.text(x_s + auto_len_px / 2, y_b, f"{auto_len} {unit}",
                     transform=trans, color=scalebar_colour, fontsize=scalebar_fontsize,
                     ha='center', va='center', fontweight='bold')
-    else:
-        for i, (ax, xlab, ylab) in enumerate(zip(axes, ['X', 'X', 'Y'], ['Y', 'Z', 'Z'])):
-            ax.set_xlabel(f"{xlab} ({unit})")
-            ax.set_ylabel(f"{ylab} ({unit})")
-            ax.set_xticks(np.linspace(0, img.shape[2] if i < 2 else img.shape[1], 5))
-            ax.set_xticklabels(np.round(ax.get_xticks() * (scale[2] if i < 2 else scale[1]), 1))
-            ax.set_yticks(np.linspace(0, img.shape[1] if i == 0 else img.shape[0], 5))
-            ax.set_yticklabels(np.round(ax.get_yticks() * (scale[1] if i == 0 else scale[0]), 1))
 
     cbar = fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
                         ax=axes, orientation="vertical", fraction=0.02, pad=0.05)
