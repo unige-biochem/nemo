@@ -48,6 +48,7 @@ NEMO/
 ├── color-maps.pdf                   # List of matplotlib cmaps that can be passed to NEMO
 ├── environment.yml                  # Required Python libraries compatible with any conda
 ├── MAIN.ipynb                       # Main Pipeline Workspace Notebook
+├── BATCH.ipynb                      # Batch Analysis Notebook
 ├── tiff_simulator.ipynb             # Generation of synthetic test data
 └── README.md                        # This README
 ```  
