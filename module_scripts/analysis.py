@@ -221,7 +221,7 @@ def load_img_unit(path, default_unit="um"):
         try:
             unit = next(line for line in tif.pages[0].tags.get('ImageDescription', None).value.splitlines() if
                         line.startswith("unit=")).split('=')[1]
-            if unit == "micron":
+            if unit == "micron" or unit == r"\u00B5m":
                 unit = "um"
             print(f"Found unit = {unit} !")
             return unit

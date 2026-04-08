@@ -50,7 +50,6 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
             [yen_thresh(img_blur[img_dim[0] // 2, :, :]),
              yen_thresh(img_blur[:, img_dim[1] // 2, :]),
              yen_thresh(img_blur[:, :, img_dim[2] // 2])])
-        img_thresh_val *= 0.5
 
     # ==== Binarise Image using Threshold ====
     img_thresh = thresh_img(img_blur, img_thresh_val)
