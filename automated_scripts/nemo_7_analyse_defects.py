@@ -182,8 +182,9 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
 
     save_array(pol_vecfield, name=f"def-pol_2dcurved", header="x,y,z,vx,vy,vz",
                folderpath=resdata_dir_layer)
-    save_array(charge_pol_linked_idxs, name=f"def-pol_2dcurved_idxs", header="idx",
+    save_array(charge_pol_linked_idxs, name=f"def-pol_2dcurved_idxs_expanded", header="idx",
                folderpath=resdata_dir_layer)
+    save_array(pol_idxs, name=f"def-pol_2dcurved_idxs", header="idx", folderpath=resdata_dir_layer)
 
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
