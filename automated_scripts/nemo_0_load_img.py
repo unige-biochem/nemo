@@ -4,7 +4,7 @@ Purpose: Load image
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -21,7 +21,7 @@ def main(img_path, t_select, c_select, img_slice_colour="Greens_r", img_maxproj_
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Load Image ====
+    # ==== Load image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
     img_load = load_img_virtual(path=img_path, t_sel_idx=t_select, c_sel_idx=c_select)
@@ -29,10 +29,10 @@ def main(img_path, t_select, c_select, img_slice_colour="Greens_r", img_maxproj_
         return None
     img_raw, img_dim, img_scale, img_unit = img_load
 
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
-    # ==== Plot Image Slices and Max Projections ====
+    # ==== Plot image slices and max projections ====
     z_i, y_i, x_i = int(img_dim[0] // 2), int(img_dim[1] // 2), int(img_dim[2] // 2)
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, x_i=x_i, y_i=y_i, z_i=z_i,
              savefig=os.path.join(resfig_dir, "sliced_raw.pdf"), cmap=img_slice_colour, hidefig=hidefig)

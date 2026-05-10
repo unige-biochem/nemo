@@ -4,7 +4,7 @@ Purpose: Mesh image
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -15,7 +15,7 @@ from module_scripts import analysis
 from module_scripts.visuals import plot_img, view_mesh
 from module_scripts.datahandler import create_resdirs, save_array, save_mesh
 
-# Import python essentials
+# Import Python essentials
 import argparse
 
 
@@ -31,7 +31,7 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Load Image ====
+    # ==== Load image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
     img_load = analysis.load_img_virtual(path=img_path, t_sel_idx=t_select, c_sel_idx=c_select)
@@ -39,22 +39,22 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         return None
     img_raw, img_dim, img_scale, img_unit = img_load
 
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
-    # ==== Load Preprocessed Image ====
+    # ==== Load preprocessed image ====
     img_thresh_load = analysis.load_img_virtual(path=os.path.join(resfig_dir, "img_thresholded.tiff"), t_sel_idx=0,
                                                 c_sel_idx=0)
     img_thresh_raw, img_thresh_dim, img_thresh_scale, img_thresh_unit = img_thresh_load
 
-    # ==== Segment Surface Mesh(es) ====
+    # ==== Segment surface mesh(es) ====
     full_mesh = analysis.marching_cubes(img=img_thresh_raw, scale=img_thresh_scale, level=0.5, step_size=box_size)
     full_mesh_name = "full_mesh"
 
-    # ==== Save Mesh(es) ====
+    # ==== Save mesh(es) ====
     save_mesh(full_mesh, os.path.join(resdata_dir, f"{full_mesh_name}.ply"))
 
-    # ==== Plot Image Slices with Mesh Overlay ====
+    # ==== Plot image slices with mesh overlay ====
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[full_mesh],
              show_mesh_normals=True, cmap="Greys_r",
              savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}.pdf"), hidefig=hidefig)
@@ -81,7 +81,7 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         print(f"[!] Unrecognised splitting mode {split_mode} !")
         return None
 
-    # ==== Apply Sub-Mesh Selection ====
+    # ==== Apply sub-mesh selection ====
     inner_mesh = analysis.sel_submesh(mesh=full_mesh, mask=mesh_sel_mask)
     outer_mesh = analysis.sel_submesh(mesh=full_mesh, mask=~mesh_sel_mask)
     save_mesh(inner_mesh, os.path.join(resdata_dir, "inner_mesh.ply"))
@@ -101,14 +101,14 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
     smooth_meshes = []
     smooth_subset_meshes = []
     for i, mesh_i in enumerate(raw_meshes):
-        # ==== Smooth Mesh(es) ====
+        # ==== Smooth mesh(es) ====
         mesh_i_smooth = analysis.taubin_smooth_mesh(mesh=mesh_i, n_iter=smooth_iterations,
                                                     pass_band=smooth_factor)
-        # ==== Save Mesh(es) ====
+        # ==== Save mesh(es) ====
         save_mesh(mesh_i_smooth, os.path.join(resdata_dir, f"{mesh_names[i]}.ply"))
         smooth_meshes.append(mesh_i_smooth)
 
-        # ==== Plot Image Slices with Mesh Overlay ====
+        # ==== Plot image slices with mesh overlay ====
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth],
                  show_mesh_normals=True, cmap="Greys_r",
                  savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}.pdf"), hidefig=hidefig)
@@ -125,12 +125,12 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         sizes = [mesh.vertices.shape[0] for mesh in mesh_i_smooth_subsets]
         mesh_i_smooth_subsets_largest = mesh_i_smooth_subsets[np.argmax(sizes)]
 
-        # ==== Save Mesh(es) ====
+        # ==== Save mesh(es) ====
         save_mesh(mesh_i_smooth_subsets_largest,
                   os.path.join(resdata_dir, f"{mesh_names[i]}_subset.ply"))
         smooth_subset_meshes.append(mesh_i_smooth_subsets_largest)
 
-        # ==== Plot Image Slices with Mesh Overlay ====
+        # ==== Plot image slices with mesh overlay ====
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth_subsets_largest],
                  show_mesh_normals=True, cmap="Greys_r",
                  savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}_subset.pdf"),

@@ -4,7 +4,7 @@ Purpose: Inter-mesh thickness
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -22,7 +22,7 @@ from module_scripts.visuals import (
     view_colored_mesh_multiple,
     color_scalar
 )
-# Import python essentials
+# Import Python essentials
 import argparse
 import numpy as np
 
@@ -39,19 +39,20 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Choose Image ====
+    # ==== Choose image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
-    # ==== Load Image ====
+
+    # ==== Load image ====
     img_scale = load_img_scaling(path=img_path)
     img_unit = load_img_unit(path=img_path)
     if img_scale is None:
         return None
 
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
-    # ==== Select Mesh(es) ====
+    # ==== Select mesh(es) ====
     mesh_1 = load_mesh(os.path.join(resdata_dir, f"{mesh_1_name}.ply"))
     mesh_2 = load_mesh(os.path.join(resdata_dir, f"{mesh_2_name}.ply"))
     mesh_2.invert()
@@ -63,17 +64,17 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl
     mesh_2_radii_avg = np.mean(mesh_2_radii)
     print(f"Approximate radius of inner mesh: {mesh_1_radii_avg} and of outer mesh: {mesh_2_radii_avg}")
 
-    # ==== Calculate Inter-Mesh Distance ====
+    # ==== Calculate inter-mesh distance ====
     dist_vals, dist_idxs = inter_dist_mesh(mesh_1=mesh_1, mesh_2=mesh_2, num_sample=thickness_sampl_number,
                                            crop_range=thickness_crop_range, debug=True,
                                            allow_multiple_hits=False)
     full_dist_vals = interpolate_on_mesh(mesh_1, dist_idxs, dist_vals, k=interp_k)
 
-    # ==== Save Inter-Mesh Distance ====
+    # ==== Save inter-mesh distance ====
     save_array(full_dist_vals, f"{mesh_1_name}_VS_{mesh_2_name}_thickness", header=f"dist ({img_unit})",
                folderpath=resdata_dir)
 
-    # ==== Plot Inter-Mesh Distance ====
+    # ==== Plot inter-mesh distance ====
     plot_hist(array=full_dist_vals, title=f"Thickness AVG = {full_dist_vals.mean():.2e} {img_unit}",
               xlim=thickness_crop_range,
               savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_thickness_hist.pdf"),
@@ -86,7 +87,7 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl
                name=f"{mesh_1_name}_VS_{mesh_2_name}_thickness_parameters",
                header="numcalc,interpnneigh", folderpath=resdata_dir)
     if render:
-        # ==== 3D Render Result ====
+        # ==== 3D render result ====
         view_colored_mesh_multiple([mesh_1, mesh_2],
                                    [color_scalar(full_dist_vals, normalise=True, cmap="coolwarm"),
                                     "white"], mesh_blending_list=["opaque", "translucent"],

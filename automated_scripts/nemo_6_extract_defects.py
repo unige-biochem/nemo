@@ -4,7 +4,7 @@ Purpose: Extract defects
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -24,7 +24,7 @@ from module_scripts.visuals import (
     color_scalar
 )
 
-# Import python essentials
+# Import Python essentials
 import numpy as np
 import argparse
 
@@ -42,33 +42,33 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Choose Image ====
+    # ==== Choose image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
 
-    # ==== Load Image ====
+    # ==== Load image ====
     img_unit = load_img_unit(path=img_path)
     img_scale = load_img_scaling(path=img_path)
     if img_scale is None:
         return None
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
-    # ==== Load Projected Result ====
+    # ==== Load projected result ====
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     proj_layer = load_array("intensities", folderpath=resdata_dir_layer)
     proj_layer /= proj_layer.max()
     layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
-    # ==== Load 2D+ Directors ====
+    # ==== Load 2D+ directors ====
     directors_2dcurved_avg = load_array(name=f"directors-avg_2dcurved_{nematic_avg_label}",
                                         folderpath=resdata_dir_layer)
     s_2dcurv = load_array(name=f"S-order_2dcurved_{nematic_avg_label}",
                           folderpath=resdata_dir_layer)
     idxs_sel = load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
 
-    # ==== Find Defects and Inter ====
+    # ==== Find defects ====
     defect_idxs, rel_dists = select_geodesic_defects(s_2dcurv, layer_mesh, idxs_sel,
                                                      dist_cutoff=dist_cutoff_defect_localisation,
                                                      unit=img_unit,
@@ -94,7 +94,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
     defect_coords = layer_mesh.vertices[idxs_sel[defect_idxs]]
     save_array(defect_coords, name="defect_coords", header="x,y,z", folderpath=resdata_dir_layer)
     if render:
-        # ==== 3D Render Results ====
+        # ==== 3D render results ====
         view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg, vec_edge_width=0.1,
                                     vec_colors=color_scalar(s_2dcurv, manual_vminmax=[0, 1]),
                                     marker_size=500,

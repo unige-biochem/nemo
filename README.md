@@ -130,6 +130,7 @@ documentation files (the "Software"), to deal in the Software without restrictio
 rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
 persons to whom the Software is furnished to do so, subject to the following conditions:
 
+## 📜 **Citation**
 - **Citation Requirement**: If the Software is used directly or indirectly in any scientific publication or
   presentation, proper citation of the original work and author is required.
 

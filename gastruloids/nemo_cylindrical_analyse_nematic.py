@@ -4,7 +4,7 @@ Purpose: Decompose obtained tangential nematic field on s-phi basis
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 

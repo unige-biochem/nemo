@@ -4,7 +4,7 @@ Purpose: Import and visualise 2d segmentation of z slices
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os, sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -31,7 +31,7 @@ from module_scripts.visuals import (
     plot_matrix_vectors,
     plot_slice_heatmap
 )
-# Import python essentials
+# Import Python essentials
 import numpy as np
 
 

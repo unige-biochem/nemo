@@ -4,13 +4,13 @@ Purpose: Embryo Flattening for Magdalena Schindler (EMBL Heidelberg, Petridou La
 Requires Python 3.9.6 and packages from requirements.txt.
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os, sys
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from module_scripts import analysis, datahandler, visuals
 
-# Import python essentials
+# Import Python essentials
 import numpy as np
 import argparse, json
 import trimesh, tifffile

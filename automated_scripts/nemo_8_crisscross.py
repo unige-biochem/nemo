@@ -4,7 +4,7 @@ Purpose: Analyse criss-cross strength
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -24,7 +24,7 @@ from module_scripts.visuals import (
     view_colored_mesh_dir_field,
     color_scalar
 )
-# Import python essentials
+# Import Python essentials
 import numpy as np
 import argparse
 
@@ -41,15 +41,15 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Choose Image ====
+    # ==== Choose image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
 
-    # ==== Load Image ====
+    # ==== Load image ====
     img_scale = load_img_scaling(path=img_path)
     if img_scale is None:
         return None
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
     print(

@@ -4,7 +4,7 @@ Purpose: Analyse defects
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -29,7 +29,7 @@ from module_scripts.visuals import (
     view_colored_mesh_dir_field,
     color_scalar
 )
-# Import python essentials
+# Import Python essentials
 import numpy as np
 import argparse
 
@@ -46,25 +46,25 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Choose Image ====
+    # ==== Choose image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
 
-    # ==== Load Image ====
+    # ==== Load image ====
     img_scale = load_img_scaling(path=img_path)
     if img_scale is None:
         return None
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
-    # ==== Load Projected Result ====
+    # ==== Load projected result ====
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     proj_layer = load_array("intensities", folderpath=resdata_dir_layer)
     proj_layer /= proj_layer.max()
     layer_mesh = load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
-    # ==== Load 2D+ Directors ====
+    # ==== Load 2D+ directors ====
     directors_2dcurved_avg = load_array(name=f"directors-avg_2dcurved_{nematic_avg_label}",
                                         folderpath=resdata_dir_layer)
     s_2dcurv = load_array(name=f"S-order_2dcurved_{nematic_avg_label}",
@@ -72,7 +72,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     idxs_sel = load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
     defect_idxs = load_array(name="defect-idxs", folderpath=resdata_dir_layer).astype(int)
 
-    # ==== Calculate Gaussian Curvature for Topological Charge Analysis ====
+    # ==== Calculate Gaussian curvature for topological charge computation ====
     curv_charge_quick = curvature_by_srf_fit(mesh=layer_mesh, num_sample=3000, patch_size=topcurv_radius,
                                              patch_mode="radius", filter_boundary=False, debug=True,
                                              gauss_crop_range=None, boundary_excl_factor=0.0)
@@ -80,7 +80,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     gauss_curv_smooth = interpolate_on_mesh(mesh=layer_mesh, value_idxs=curv_charge_quick[2],
                                             values=curv_charge_quick[0], k=topcurv_interpk)
 
-    # ==== Calculate Curved Topological Charge ====
+    # ==== Calculate curved topological charge ====
     if topcharge_mode == "radius":
         charge_patch_idxs = coord_search_radius(layer_mesh.vertices,
                                                 custom_probes=layer_mesh.vertices[idxs_sel[defect_idxs]],
@@ -145,13 +145,13 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                    savefig=os.path.join(resfig_dir_layer, f"top-charge-shaded.pdf"),
                    hidefig=hidefig)
 
-    # ==== Save Curved Topological Charge ====
+    # ==== Save result ====
     save_array(m_charge, name=f"top-charge_2dcurved", header="m",
                folderpath=resdata_dir_layer)
     save_array(defect_idxs_calc, name=f"top-charge_2dcurved_idxs", header="idx",
                folderpath=resdata_dir_layer)
 
-    # ==== Plot Curved Topological Charge ====
+    # ==== Plot result ====
     plot_hist(m_charge, title=f"Sum(m)={np.nansum(m_charge)}",
               savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.pdf"),
               hidefig=hidefig)

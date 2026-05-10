@@ -819,6 +819,7 @@ def plot_dist_kymograph(distances, intensities, cmap, figsize, unit, savefig="",
     axes[1].plot(distances, intensities_avg / intensities_avg.max(), "o-")
     axes[1].set_ylabel("Average Intensity (a.u.)")
     axes[1].set_xlabel(f"Distance from min distance ({unit})")
+    plt.grid()
     plt.tight_layout()
     if savefig != "":
         create_figdir(os.path.dirname(savefig))
@@ -1357,8 +1358,8 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity
         vert_colors[:, 3] = 1.0
     viewer = initialise_viewer()
     if img is not None:
-        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
-        mesh_opacity *= 0.8
+        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity,
+                         blending="translucent")
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=vert_colors, shading=mesh_shading,
                        opacity=mesh_opacity, blending=mesh_blending)
     if markers is not None:
@@ -1387,7 +1388,8 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
     print(">> Rendering colored mesh...")
     viewer = initialise_viewer()
     if img is not None:
-        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity)
+        viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity,
+                         blending="translucent")
     for mesh, vert_colors, color_override, name, opacity, blending in zip(mesh_list, vert_colors_list,
                                                                           color_override_list, name_list,
                                                                           mesh_opacity_list, mesh_blending_list):
@@ -1496,7 +1498,7 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                                 mesh_blending="opaque", mesh_color_override=None, mesh_opacity=1.0,
                                 mesh_shading="none", markers=None, marker_colors="yellow", marker_size=5, img=None,
                                 scale=None, img_opacity=0.5, marker_vectors=None, marker_vectors_color="red",
-                                marker_vectors_length=100, marker_vector_width=2):
+                                marker_vectors_length=100, marker_vector_width=2, center_vectors=True):
     print(">> Rendering mesh and colored vertices...")
     vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
     if type(mesh_vert_colors) == str:
@@ -1519,10 +1521,13 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip", colormap="green")
     viewer.add_surface((mesh.vertices, mesh.faces), vertex_colors=mesh_vert_colors, shading=mesh_shading,
                        opacity=mesh_opacity, blending=mesh_blending)
-    centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
-    centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * vec_length
-    centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * vec_length
-    centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+    if center_vectors:
+        centered_x = vec_pos[:, 0] - 0.5 * vec_dir[:, 0] * vec_length
+        centered_y = vec_pos[:, 1] - 0.5 * vec_dir[:, 1] * vec_length
+        centered_z = vec_pos[:, 2] - 0.5 * vec_dir[:, 2] * vec_length
+        centered_pos = np.column_stack((centered_x, centered_y, centered_z))
+    else:
+        centered_pos = vec_pos.copy()
 
     viewer.add_vectors(
         data=np.stack((centered_pos, vec_dir), axis=1),
@@ -1532,15 +1537,6 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
         opacity=vec_opacity,
         vector_style=vector_style
     )
-    #
-    # viewer.add_vectors(
-    #     data=np.stack((centered_pos, vec_dir), axis=1),
-    #     edge_color="red",
-    #     edge_width=vec_edge_width,
-    #     length=vec_length,
-    #     opacity=vec_opacity,
-    #     vector_style=vector_style
-    # )
 
     if markers is not None:
         if type(marker_colors) != str:

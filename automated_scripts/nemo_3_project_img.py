@@ -4,7 +4,7 @@ Purpose: Project image
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -14,7 +14,7 @@ from module_scripts.datahandler import create_resdirs, save_array, save_mesh, lo
 from module_scripts.visuals import plot_img, plot_spherical_projection, plot_maxproj_pts, view_colored_mesh, \
     color_scalar
 
-# Import python essentials
+# Import Python essentials
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,16 +32,16 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
         print(f">> Image {img_path} does not exist!")
         return None
 
-    # ==== Choose Image ====
+    # ==== Choose image ====
     print(f"Selected image path: {img_path}")
     hidefig = not show_figures
-    # ==== Load Image ====
+    # ==== Load image ====
     img_load = load_img_virtual(path=img_path, t_sel_idx=t_select, c_sel_idx=c_select)
     if img_load is None:
         return None
     img_raw, img_dim, img_scale, img_unit = img_load
 
-    # ==== Create Folder Structure ====
+    # ==== Create folder structure ====
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
     try:
@@ -56,11 +56,11 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
         print(f">> Failed to load sampling mesh for {img_path}!")
         return None
 
-    # ==== Projection Logic ====
+    # ==== Projection logic ====
     layer_label = f"{mesh_name}_proj_{dist_min}_to_{dist_max}_{img_unit}_{proj_mode}"
     dist_middle = dist_min + (dist_max - dist_min) / 2
 
-    # ==== Specify Custom Minimum ====
+    # ==== Specify custom minimum ====
     resdata_dir_layer = os.path.join(resdata_dir, layer_label)
     resfig_dir_layer = os.path.join(resfig_dir, layer_label)
     if not os.path.exists(resdata_dir_layer):
@@ -68,11 +68,11 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
     if not os.path.exists(resfig_dir_layer):
         os.makedirs(resfig_dir_layer)
 
-    # ==== Save Sampling Vertices and Normals ====
+    # ==== Save sampling vertices and normals ====
     save_array(sampl_mesh.vertices, "verts", header="x,y,z", folderpath=resdata_dir_layer)
     save_array(sampl_mesh.vertex_normals, "normals", header="nx,ny,nz", folderpath=resdata_dir_layer)
 
-    # ==== Project onto Mesh ====
+    # ==== Project onto mesh ====
     dist_min_initscan = 0.0
     dist_max_initscan = 50.0
     dist_num_initscan = 50
@@ -89,9 +89,7 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
                                    mode='same')
 
     if correct_offset_automatic:
-
-        # ==== Offset Projection Correction ====
-
+        # ==== Offset projection correction ====
         profile_ref = np.percentile(smoothed_profile, 95)
         if profile_ref > 0:
             norm_profile = smoothed_profile / profile_ref
@@ -136,13 +134,13 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
         layer_mesh = sampl_mesh.copy()
     save_mesh(layer_mesh, filepath=os.path.join(resdata_dir_layer, "layer_mesh.ply"))
 
-    # ==== Save Projection ====
+    # ==== Save projection ====
     save_array(proj_layer, "intensities", header="I", folderpath=resdata_dir_layer)
 
-    # ==== Plot Projected Result ====
-    mercator_x, mercator_y = spherical_project(pts=layer_mesh.vertices)
-    plot_spherical_projection(phi=mercator_x, theta=mercator_y, intensities=proj_layer, cmap="inferno",
-                              savefig=os.path.join(resfig_dir_layer, "mercator.pdf"), hidefig=hidefig)
+    # ==== Plot projected result ====
+    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="inferno",
+                              savefig=os.path.join(resfig_dir_layer, "spherical_projection.pdf"), hidefig=hidefig)
     plot_maxproj_pts(verts=layer_mesh.vertices, colors=proj_layer, cmap="inferno", unit=img_unit,
                      savefig=os.path.join(resfig_dir_layer, "maxproj.pdf"), hidefig=hidefig)
 

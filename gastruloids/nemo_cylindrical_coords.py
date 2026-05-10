@@ -4,7 +4,7 @@ Purpose: Convert gastruloid mesh to cylindrical coordinate system
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
-# Import NEMO module_scripts
+# Import NEMO module scripts
 import os
 import sys
 
@@ -22,7 +22,7 @@ from gastruloids.extra_gastruloids import (
     create_s_phi_basis
 )
 
-# Import python essentials
+# Import Python essentials
 import numpy as np
 import trimesh
 
