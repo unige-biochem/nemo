@@ -40,9 +40,9 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
 
     # ==== Plot image slices ====
     plot_img(img=img_blur, scale=img_scale, unit=img_unit, cmap="inferno",
-             savefig=os.path.join(resfig_dir, "sliced_blurred.pdf"), hidefig=hidefig)
+             savefig=os.path.join(resfig_dir, "sliced_blurred.png"), hidefig=hidefig)
     plot_img(img=img_blur, scale=img_scale, unit=img_unit, cmap="inferno_r",
-             savefig=os.path.join(resfig_dir, "sliced_blurred_maxproj.pdf"), hidefig=hidefig, max_proj=True)
+             savefig=os.path.join(resfig_dir, "sliced_blurred_maxproj.png"), hidefig=hidefig, max_proj=True)
 
     # ==== Yen threshold image if no custom value is given ====
     if img_thresh_val is None:
@@ -55,12 +55,12 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
     img_thresh = thresh_img(img_blur, img_thresh_val)
 
     # ==== Plot image slices ====
-    plot_img(img=img_raw, scale=img_scale, unit=img_unit, savefig=os.path.join(resfig_dir, "sliced_thresh.pdf"),
+    plot_img(img=img_raw, scale=img_scale, unit=img_unit, savefig=os.path.join(resfig_dir, "sliced_thresh.png"),
              cmap="inferno", thresh_mask=img_thresh, hidefig=hidefig)
     plot_img(img=img_raw, scale=img_scale, unit=img_unit,
-             savefig=os.path.join(resfig_dir, "sliced_thresh_maxproj.pdf"),
+             savefig=os.path.join(resfig_dir, "sliced_thresh_maxproj.png"),
              cmap="inferno_r", thresh_mask=img_thresh, hidefig=hidefig, max_proj=True)
-    save_tiff(img_blur, filepath=os.path.join(resfig_dir, "img_blurred.tiff"), img_unit=img_unit, img_scale=img_scale)
+    # save_tiff(img_blur, filepath=os.path.join(resfig_dir, "img_blurred.tiff"), img_unit=img_unit, img_scale=img_scale)
     save_tiff(img_thresh, filepath=os.path.join(resfig_dir, "img_thresholded.tiff"), img_unit=img_unit,
               img_scale=img_scale)
     save_array(np.column_stack(([img_blur_val], [img_thresh_val])), name="blur_thresh_parameters",
@@ -69,5 +69,5 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
     if render:
         view_img(img_list=[img_raw, img_blur, img_thresh], scale=img_scale,
                  title_list=["Raw Image", "Blurred Image", "Thresholded Image"],
-                 color_list=["Greens_r", "inferno", "Blues_r"], opacity_list=[1.0, 0.7, 0.7])
+                 color_list=["Greens_r", "inferno", "Greys_r"], opacity_list=[1.0, 0.7, 0.8])
     return img_blur, img_thresh

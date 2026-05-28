@@ -57,10 +57,10 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
     # ==== Plot image slices with mesh overlay ====
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[full_mesh],
              show_mesh_normals=True, cmap="Greys_r",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}.pdf"), hidefig=hidefig)
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}.png"), hidefig=hidefig)
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[full_mesh], cmap="Greys",
              max_proj=True, savefig=os.path.join(resfig_dir,
-                                                 f"sliced_raw_{full_mesh_name}_maxproj.pdf"),
+                                                 f"sliced_raw_{full_mesh_name}_maxproj.png"),
              hidefig=hidefig)
     print(f"MESH {full_mesh_name}: # VERTICES = {len(full_mesh.vertices)} !")
 
@@ -88,11 +88,11 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
     save_mesh(outer_mesh, os.path.join(resdata_dir, "outer_mesh.ply"))
 
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, cmap="Greys_r",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split.pdf"),
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split.png"),
              meshes=[inner_mesh, outer_mesh], show_mesh_normals=True,
              mesh_colors=["red", "blue"], hidefig=hidefig)
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, cmap="Greys",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split_maxproj.pdf"),
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split_maxproj.png"),
              meshes=[inner_mesh, outer_mesh], max_proj=True,
              mesh_colors=["red", "blue"], hidefig=hidefig)
 
@@ -111,10 +111,10 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         # ==== Plot image slices with mesh overlay ====
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth],
                  show_mesh_normals=True, cmap="Greys_r",
-                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}.pdf"), hidefig=hidefig)
+                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}.png"), hidefig=hidefig)
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth], cmap="Greys",
                  max_proj=True, savefig=os.path.join(resfig_dir,
-                                                     f"sliced_raw_{mesh_names[i]}_maxproj.pdf"),
+                                                     f"sliced_raw_{mesh_names[i]}_maxproj.png"),
                  hidefig=hidefig)
 
         try:
@@ -133,11 +133,11 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
         # ==== Plot image slices with mesh overlay ====
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth_subsets_largest],
                  show_mesh_normals=True, cmap="Greys_r",
-                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}_subset.pdf"),
+                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}_subset.png"),
                  hidefig=hidefig)
         plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth_subsets_largest], cmap="Greys",
                  max_proj=True, savefig=os.path.join(resfig_dir,
-                                                     f"sliced_raw_{mesh_names[i]}_subset_maxproj.pdf"),
+                                                     f"sliced_raw_{mesh_names[i]}_subset_maxproj.png"),
                  hidefig=hidefig)
 
     if render:

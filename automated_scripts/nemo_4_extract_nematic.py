@@ -154,21 +154,24 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
 
         # ==== Plot directors ====
         plot_dir_field(directors=directors_2dcurved, title=title_render,
-                       savefig=os.path.join(resfig_dir_layer, "directors_2dcurved.pdf"), veclength=10,
+                       savefig=os.path.join(resfig_dir_layer, "directors_2dcurved.png"), veclength=10,
                        hidefig=hidefig)
     else:
         print(f"This was a debug run, not saving results...")
         return None
+    try:
+        sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+        vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved[:, :3],
+                                                               directors_2dcurved[:, 3:])
 
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
-    vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved[:, :3],
-                                                           directors_2dcurved[:, 3:])
-
-    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
-                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
-                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
-                              savefig=os.path.join(resfig_dir_layer, "spherical_projection_extracted-directors.pdf"),
-                              hidefig=hidefig)
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                                  vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                                  vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
+                                  savefig=os.path.join(resfig_dir_layer,
+                                                       "spherical_projection_extracted-directors.png"),
+                                  hidefig=hidefig)
+    except Exception as e:
+        print(f"Encountered error during spherical projection: {e}")
     if render:
         # ==== 3D render patch of 2D+ orientation analysis ====
         full_mesh_colors = np.array(["#FF0000" for _ in range(len(layer_mesh.vertices))])
@@ -185,8 +188,8 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
         # ==== 3D render result of 2D+ orientation analysis ====
         view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved,
                                     mesh_vert_colors=color_scalar(proj_layer, normalise=True,
-                                                                  cmap="Greys_r"), vec_length=7,
-                                    vec_edge_width=0.1)
+                                                                  cmap="Greys_r"), vec_length=15,
+                                    vec_edge_width=0.5)
 
     save_array(np.column_stack(
         ([patch_size], [normal_validity_k], [normal_validity_thresh], [compute_num], [grid_n_2dcurve_analysis])),

@@ -16,7 +16,8 @@ from module_scripts.analysis import (
     avg_tan_nem_tens,
     spherical_project,
     spherical_project_vectors,
-    load_img_unit
+    load_img_unit,
+    interpolate_on_mesh
 )
 from module_scripts.datahandler import create_resdirs, load_array, load_mesh, save_array
 from module_scripts.visuals import (
@@ -25,6 +26,7 @@ from module_scripts.visuals import (
     plot_spherical_projection,
     view_colored_verts,
     view_colored_mesh_dir_field,
+    view_colored_mesh,
     color_scalar
 )
 
@@ -77,8 +79,6 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
     vec_length = 10
     vec_edge_width = vec_length / 6
     plot2d_view = (20, 0)
-    renderfigsize = (6, 5)
-    histfigsize = (4, 3)
     veccoords = directors_2dcurved[:, :3]
     if patch_type == "radius":
         idxs_neigh = coord_search_radius(veccoords, r=patch_size)
@@ -112,26 +112,28 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
     directors_2dcurved_avg = directors_2dcurved.copy()
     directors_2dcurved_avg[:, 3:] = n_avg_2dcurv
 
-    savefig_render = os.path.join(resfig_dir_layer, f"field_intial-avg-nematic_{nematic_avg_label}.pdf")
-    savefig_hist = os.path.join(resfig_dir_layer, f"hist_intial-order-s_{nematic_avg_label}.pdf")
+    savefig_render = os.path.join(resfig_dir_layer, f"field_intial-avg-nematic_{nematic_avg_label}.png")
+    savefig_hist = os.path.join(resfig_dir_layer, f"hist_intial-order-s_{nematic_avg_label}.png")
 
     plot_dir_field(directors=directors_2dcurved_avg, veclength=vec_length, view_init=plot2d_view,
                    veccolor=s_2dcurv, cmap_label="order scalar $S$", title=title_render, manual_vminmax=[0, 1],
-                   savefig=savefig_render, figsize=renderfigsize, show_axes=False, hidefig=hidefig)
+                   savefig=savefig_render, show_axes=False, hidefig=hidefig)
     plot_hist(array=s_2dcurv, title=title_hist, savefig=savefig_hist,
-              figsize=histfigsize, xlim=[0, 1], hidefig=hidefig)
+              xlim=[0, 1], hidefig=hidefig)
+    try:
+        sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+        vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
+                                                               directors_2dcurved_avg[:, 3:])
 
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
-    vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
-                                                           directors_2dcurved_avg[:, 3:])
-
-    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
-                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
-                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
-                              vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
-                              savefig=os.path.join(resfig_dir_layer,
-                                                   f"spherical_projection_field_avg-nematic_{nematic_avg_label}.pdf"),
-                              hidefig=hidefig)
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                                  vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                                  vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                                  vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                                  savefig=os.path.join(resfig_dir_layer,
+                                                       f"spherical_projection_field_avg-nematic_{nematic_avg_label}.png"),
+                                  hidefig=hidefig)
+    except Exception as e:
+        print(f"Encountered error during spherical projection: {e}")
 
     if render:
         # ==== Visualise averaging patch ====
@@ -147,6 +149,9 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
                                     mesh_vert_colors=color_scalar(proj_layer, normalise=True,
                                                                   cmap="Greys_r"),
                                     vec_length=vec_length, vec_edge_width=vec_edge_width)
+        view_colored_mesh(mesh=layer_mesh, vert_colors=color_scalar(
+            interpolate_on_mesh(layer_mesh, value_idxs=idxs_sel, values=s_2dcurv, k=20),
+            manual_vminmax=[0, 1]))
     save_array(np.column_stack(([avg_size])),
                name=f"{nematic_avg_label}_nematic-analysis_parameters",
                header=f"{avg_mode}",

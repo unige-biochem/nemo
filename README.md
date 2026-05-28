@@ -33,6 +33,17 @@ If you come accross any issue, don't hesitate to post a GitLab issue or email me
 
 ---
 
+## 📜 **Citation**
+
+- **Citation Requirement**: If the Software is used directly or indirectly in any scientific publication or
+  presentation, proper citation of the original work and author is required.
+
+- Please cite the project as shown below:
+
+**[!] publication incl. NEMO to be announced asap.  [!]**
+
+---
+
 ## 📂 **Project Structure**
 
 The project is structured as follows:
@@ -42,10 +53,8 @@ NEMO/
 ├── module_scripts/                  # Folder of Module Scripts (Core Library)
 │   ├── analysis.py                  # Image / Mesh Analysis Modules
 │   ├── visuals.py                   # Visualisation Modules
-│   ├── datahandler.py               # Input / Output Data Handling Modules
-│   └── simulation.py                # Simulation Modules
+│   └── datahandler.py               # Input / Output Data Handling Modules
 ├── automated_scripts/               # Folder of Automated Analysis Scripts
-├── color-maps.pdf                   # List of matplotlib cmaps that can be passed to NEMO
 ├── environment.yml                  # Required Python libraries compatible with any conda
 ├── MAIN.ipynb                       # Main Pipeline Workspace Notebook
 ├── BATCH.ipynb                      # Batch Analysis Notebook
@@ -68,12 +77,12 @@ python --version
 
 ### Installation
 
-1. Clone this repository:
+Clone this repository:
 
 - Download the source code from GitHub (https://gitlab.unige.ch/salbreux-group/konstantinos-andreadis/nemo.git)
 - Or extract the .zip file if sent privately.
 
-2. Install the required dependencies in the virtual environment:
+Install the required dependencies in the virtual environment:
 
 ```bash
 conda env create -f environment.yml
@@ -129,13 +138,5 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
 rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
 persons to whom the Software is furnished to do so, subject to the following conditions:
-
-## 📜 **Citation**
-- **Citation Requirement**: If the Software is used directly or indirectly in any scientific publication or
-  presentation, proper citation of the original work and author is required.
-
-- Please cite the project as shown below:
-
-**[!] publication incl. NEMO to be announced asap.  [!]**
 
 © Konstantinos Andreadis 2024 (PhD @ Roux Lab & Salbreux Lab at UNIGE, Switzerland)

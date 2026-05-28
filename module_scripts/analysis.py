@@ -17,7 +17,7 @@ import scipy.sparse as sp
 import trimesh
 import zarr
 from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import gaussian_filter, binary_fill_holes
+from scipy.ndimage import gaussian_filter
 from scipy.optimize import least_squares
 from scipy.spatial import KDTree
 from skimage import measure
@@ -189,14 +189,15 @@ def expand_2d_array(array, num):
 ############################
 
 
-def get_tiff_scaling(tif):
+def get_tiff_scaling(tif, debug=False):
     # ======== XY resolution ========
     try:
         xres = tif.pages[0].tags['XResolution'].value
         yres = tif.pages[0].tags['YResolution'].value
         xscale = 1 / float(xres[0] / xres[1])
         yscale = 1 / float(yres[0] / yres[1])
-        print(f"Found xscale = {xscale}, yscale = {yscale} !")
+        if debug:
+            print(f"Found xscale = {xscale}, yscale = {yscale} !")
     except:
         xscale, yscale = 1.0, 1.0
         print(f"XY scaling absent... using default {xscale, yscale} instead !")
@@ -205,7 +206,8 @@ def get_tiff_scaling(tif):
     try:
         zscale = float(next(line for line in tif.pages[0].tags.get('ImageDescription', None).value.splitlines() if
                             line.startswith("spacing=")).split('=')[1])
-        print(f"Found zscale = {zscale} !")
+        if debug:
+            print(f"Found zscale = {zscale} !")
     except:
         zscale = 1.0
         print(f"Z spacing absent... using default {zscale} instead !")
@@ -213,7 +215,7 @@ def get_tiff_scaling(tif):
     return img_scale
 
 
-def load_img_unit(path, default_unit="um"):
+def load_img_unit(path, default_unit="um", debug=False):
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
@@ -223,15 +225,15 @@ def load_img_unit(path, default_unit="um"):
                         line.startswith("unit=")).split('=')[1]
             if unit in ["micron", r"\u00B5m", "microns"]:
                 unit = "um"
-            print(f"Found unit = {unit} !")
+            if debug:
+                print(f"Found unit = {unit} !")
             return unit
         except:
             print(f"[!] Could not find unit, resorting to standard {default_unit}...")
             return default_unit
 
 
-def load_img_dimensions(path):
-    print(f">> Loading {path}...")
+def load_img_dimensions(path, debug=False):
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
@@ -242,12 +244,12 @@ def load_img_dimensions(path):
         shape = series.shape
         axis_map = {ax: i for i, ax in enumerate(axes)}
         dims = {ax: shape[axis_map[ax]] if ax in axis_map else 1 for ax in ['T', 'Z', 'C', 'Y', 'X']}
-        print(', '.join(f"{k} = {v}" for k, v in dims.items()))
+        if debug:
+            print(', '.join(f"{k} = {v}" for k, v in dims.items()))
         return dims
 
 
 def load_img_scaling(path):
-    print(f">> Loading {path}...")
     if not os.path.exists(path):
         print(f"[!] Image does not exist, aborting !")
         return None
@@ -316,7 +318,6 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_sca
 
     # ======== Reduce resolution if needed by averaging ========
     if reduce_z > 1 or reduce_xy > 1:
-        # Dynamically get current shape (now guaranteed 3D: Z, Y, X)
         curr_z, curr_y, curr_x = img_raw.shape
 
         if reduce_xy > 1:
@@ -334,8 +335,6 @@ def load_img_virtual(path, norm_vals=False, t_sel_idx=0, c_sel_idx=0, custom_sca
             )
             img_raw = img_raw.reshape(new_shape).mean(axis=(2, 4))
             img_scale = (img_scale[0], reduce_xy * img_scale[1], reduce_xy * img_scale[2])
-
-        # Refresh shape info for Z-reduction step
         curr_z, curr_y, curr_x = img_raw.shape
 
         if reduce_z > 1 and curr_z > 1:
@@ -393,11 +392,6 @@ def thresh_img(img, thresh, inverse=True, keep_values_above=False):
     if not keep_values_above:
         img_thresh[~mask] = 1
     return img_thresh
-
-
-def fill_holes_img(img):
-    print(f">> Filling holes in img...")
-    return binary_fill_holes(img).astype(float)
 
 
 #############################
@@ -478,87 +472,6 @@ def fit_sphere(points):
     center = np.mean(points, axis=0)
     r0 = np.mean(np.linalg.norm(points - center, axis=1))
     return least_squares(sphere_func, x0=[*center, r0], args=(points,)).x
-
-
-def ellipsoid_func(params, points):
-    x0, y0, z0, a, b, c, alpha, beta, gamma = params
-    shifted_points = points - np.array([x0, y0, z0])
-    rotmatrix = rot3dmatrix(alpha=alpha, beta=beta, gamma=gamma)
-    rotated_points = shifted_points @ rotmatrix.T
-    rho = (rotated_points[:, 0] / a) ** 2 + (rotated_points[:, 1] / b) ** 2 + (rotated_points[:, 2] / c) ** 2
-    residuals = (rho - 1)
-    return residuals
-
-
-def fit_ellipsoid(points, fit_rotation=True, fixed_angles=None):
-    if fixed_angles is None:
-        fixed_angles = [0, 0, 0]
-    print(f">> Fitting ellipsoid to {len(points)} pts...")
-    x0, y0, z0 = np.mean(points, axis=0)
-    a, b, c = np.ptp(points, axis=0) / 2
-    print(f"GUESS = x0 {x0}, y0 {y0}, z0 {z0}")
-    print(f"GUESS = a {a}, b = {b}, c = {c}")
-    if fit_rotation:
-        initial_params = [x0, y0, z0, np.abs(a), np.abs(b), np.abs(c), 0, 0, 0]
-        bounds = (
-            [-np.inf, -np.inf, -np.inf, 0, 0, 0, -np.pi / 2, -np.pi / 2, -np.pi / 2],  # lower bound
-            [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.pi / 2, np.pi / 2, np.pi / 2]  # upper bound
-        )
-    else:
-        print(f"Fixing the angle to angles {fixed_angles} !")
-        initial_params = [x0, y0, z0, np.abs(a), np.abs(b), np.abs(c)]
-        bounds = (
-            [-np.inf, -np.inf, -np.inf, 0, 0, 0],  # lower bound
-            [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf]  # upper bound
-        )
-
-    def ellipsoid_func_reduced(params, pts):
-        if fit_rotation:
-            return ellipsoid_func(params, pts)
-        else:
-            return ellipsoid_func(np.concatenate([params, fixed_angles]), pts)
-
-    fit_result = least_squares(fun=ellipsoid_func_reduced, x0=initial_params, args=(points,), bounds=bounds)
-    fit_params = fit_result.x
-    if not fit_result.success:
-        print("WARNING: Least squares optimization did not converge!", fit_result.message)
-    if not fit_rotation:
-        fit_params = np.concatenate([fit_params, fixed_angles])
-    x0, y0, z0, a, b, c, alpha, beta, gamma = fit_params
-    print(f"x0 = {round(x0, 1)}, y0 = {round(y0, 1)}, z0 = {round(z0, 1)}")
-    print(f"a = {round(a, 1)}, b = {round(b, 1)}, c = {round(c, 1)}")
-    if fit_rotation:
-        print(
-            f"alpha = {round(np.degrees(alpha), 1)}, beta = {round(np.degrees(beta), 1)}, gamma = {round(np.degrees(gamma), 1)}")
-    return fit_params
-
-
-def generate_ellipsoid(params, num_points):
-    print(f">> Creating ellipsoid mesh....")
-    x0, y0, z0, a, b, c, alpha, beta, gamma = params
-
-    indices = np.arange(0, num_points, dtype=float) + 0.5
-    phi = np.arccos(1 - 2 * indices / num_points)
-    theta = np.pi * (1 + 5 ** 0.5) * indices
-
-    x = a * np.sin(phi) * np.cos(theta)
-    y = b * np.sin(phi) * np.sin(theta)
-    z = c * np.cos(phi)
-    ellipsoid_points = np.column_stack((x, y, z))
-
-    rotmatrix = rot3dmatrix(alpha=alpha, beta=beta, gamma=gamma)
-    rotated_ellipsoid_points = ellipsoid_points @ rotmatrix
-
-    local_normals = np.column_stack((x / (a ** 2), y / (b ** 2), z / (c ** 2)))
-    normals = local_normals @ rotmatrix
-    normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
-
-    x_shifted = rotated_ellipsoid_points[:, 0] + x0
-    y_shifted = rotated_ellipsoid_points[:, 1] + y0
-    z_shifted = rotated_ellipsoid_points[:, 2] + z0
-    vertices = np.column_stack((x_shifted, y_shifted, z_shifted))
-    print(f"Created ellipsoid with {vertices.shape[0]} unique points!")
-    return vertices, normals
 
 
 #########################
@@ -666,26 +579,6 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
                 f"Mean: AVG = {np.nanmean(C_mean)} | MIN = {np.nanmin(C_mean)} | MAX = {np.nanmax(C_mean)} | None? = {np.isnan(C_mean).sum()}")
     tensor_idxs = random_idxs.copy()
     return C_gauss, C_mean, Gauss_idxs, mean_idxs, C_tensors, C_tensors_mixed, tensor_idxs
-
-
-def density_estimate(mesh, k=30, debug=False, crop_range=None):
-    print(f">> Density estimation for {len(mesh.vertices)} vertices with k = {k}...")
-    idxs, dists = coord_search_neighbours(mesh.vertices, k=k, debug=False, return_dists=True)
-    densities = k / np.average(np.square(dists[:, 1:]), axis=1)
-    if debug:
-        print(
-            f"Densities: AVG = {np.average(densities)} | MIN = {np.min(densities)} | MAX = {np.max(densities)} | None? = {np.isnan(densities).sum()}")
-
-    idxs = np.arange(0, mesh.vertices.shape[0])
-    if crop_range is not None:
-        print(f">> Cropping to min {crop_range[0]}, max {crop_range[1]}...")
-        crop_mask = (crop_range[0] < densities) & (densities < crop_range[1])
-        densities, idxs = densities[crop_mask], idxs[crop_mask]
-        if debug:
-            print(
-                f"Densities: AVG = {np.average(densities)} | MIN = {np.min(densities)} | MAX = {np.max(densities)} | None? = {np.isnan(densities).sum()}")
-
-    return densities, idxs
 
 
 def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None, allow_multiple_hits=False):
@@ -870,33 +763,6 @@ def spherical_project_vectors(pts, vecs, ref_point=None, rotate=None):
     vphi /= norm
     vtheta /= norm
     return vphi, vtheta
-
-
-def create_radial_stack(values, phi_coords, theta_cords, projection_radii, grid_n=None):
-    if grid_n is None:
-        grid_n = int(np.sqrt(len(phi_coords)))
-    else:
-        grid_n = int(grid_n)
-    print(f">> Creating z stack of {grid_n} x {grid_n} grid points...")
-    phi_coords_fine = np.linspace(phi_coords.min(), phi_coords.max(), grid_n)
-    theta_cords_fine = np.linspace(theta_cords.min(), theta_cords.max(), grid_n)
-    grid_phi, grid_theta = np.meshgrid(phi_coords_fine, theta_cords_fine)
-    proj_points = np.column_stack((phi_coords.ravel(), theta_cords.ravel()))
-    grid_points = np.column_stack((grid_phi.ravel(), grid_theta.ravel()))
-    tree = KDTree(proj_points)
-    _, nearest_idx = tree.query(grid_points, k=1)
-
-    radial_stack = np.empty((values.shape[0], grid_n, grid_n))
-    stack_coords = np.empty((values.shape[0], grid_n, grid_n, 3))
-    phi_grid = np.fliplr(grid_phi.T)
-    theta_grid = np.fliplr(grid_theta.T)
-
-    for i in range(values.shape[0]):
-        radial_stack[i] = np.fliplr(values[i].ravel()[nearest_idx].reshape(grid_phi.shape).T)
-        stack_coords[i, ..., 0] = phi_grid
-        stack_coords[i, ..., 1] = theta_grid
-        stack_coords[i, ..., 2] = projection_radii[i]
-    return radial_stack, stack_coords
 
 
 #############################################
@@ -1105,50 +971,6 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, return_
         return S_order, n_avg
 
 
-def unique_neighborhoods(arr):
-    if isinstance(arr, list):
-        M = len(arr)
-        neighborhoods = [set(neigh) for neigh in arr]
-        conflict = np.zeros((M, M), dtype=bool)
-        for i in range(M):
-            for j in range(i + 1, M):
-                if neighborhoods[i] & neighborhoods[j]:
-                    conflict[i, j] = True
-                    conflict[j, i] = True
-
-        selected = []
-        remaining = np.ones(M, dtype=bool)
-        while remaining.any():
-            degrees = conflict[remaining][:, remaining].sum(axis=1)
-            idx_in_remaining = np.argmin(degrees)
-            idx = np.flatnonzero(remaining)[idx_in_remaining]
-            selected.append(idx)
-            to_remove = conflict[idx] | (np.arange(M) == idx)
-            remaining[to_remove] = False
-        print(f"{len(selected)} unique out of {len(arr)}!")
-        return [arr[i] for i in selected]
-    else:
-        arr = np.asarray(arr)
-        M, k = arr.shape
-        max_index = arr.max() + 1
-        membership = np.zeros((M, max_index), dtype=bool)
-        membership[np.arange(M)[:, None], arr] = True
-        conflict = membership @ membership.T > 0
-        np.fill_diagonal(conflict, 0)
-        selected = []
-        remaining = np.ones(M, dtype=bool)
-
-        while remaining.any():
-            degrees = conflict[remaining][:, remaining].sum(axis=1)
-            idx_in_remaining = np.argmin(degrees)
-            idx = np.flatnonzero(remaining)[idx_in_remaining]
-            selected.append(idx)
-            to_remove = conflict[idx] | (np.arange(M) == idx)
-            remaining[to_remove] = False
-        print(f"{len(selected)} unique out of {len(arr)}!")
-        return arr[selected]
-
-
 def patch_surface_integral(mesh, value, patch_idxs, debug=False):
     patch_integrals = []
     for i in range(patch_idxs.shape[0]):
@@ -1330,7 +1152,6 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         if len(neigh_idxs_sel) < 10:
             continue
 
-        # --- Local Basis (t1, t2) ---
         normal = vertex_normals[core_idx_sel]
         normal /= np.linalg.norm(normal)
         t1 = np.cross(normal, [1, 0, 0])
@@ -1338,21 +1159,16 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
             t1 = np.cross(normal, [0, 1, 0])
         t1 /= np.linalg.norm(t1)
         t2 = np.cross(normal, t1)
-
-        # --- Project Positions and Directors ---
         rel_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]] - core_vertex
         # Spatial angle (phi in Function 2)
         phi_spatial = np.arctan2(rel_pos @ t2, rel_pos @ t1)
 
-        # Director angle (theta in Function 2)
         neigh_dirs = directors_v[neigh_idxs_sel]
         d_proj_x = neigh_dirs @ t1
         d_proj_y = neigh_dirs @ t2
         theta_dir = np.arctan2(d_proj_y, d_proj_x)
 
-        # --- MATCHING MATH: Complex Phase Extraction ---
         # Calculation: Z = mean( exp( i * (2*theta - 2*s*phi) ) )
-        # This finds the intrinsic phase phi_0
         Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * s * phi_spatial)))
         phi_0 = np.angle(Z) / 2
 

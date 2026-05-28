@@ -7,9 +7,6 @@ Author: Konstantinos Andreadis
 # IMPORT LIBRARIES #
 ####################
 import os
-import re
-
-import imageio.v2 as imageio
 import numpy as np
 import pandas as pd
 import trimesh
@@ -50,7 +47,7 @@ def save_array(array, name, header, folderpath, delimiter=","):
 # IMAGE I/O MODULES #
 #####################
 
-def save_tiff(array, filepath, img_unit, img_scale):
+def save_tiff(array, filepath, img_unit, img_scale, scalar_type=np.float32):
     z_pix, y_pix, x_pix = img_scale
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     clean_unit = 'micron' if img_unit.lower() in ['um', 'µm', 'micron', 'microns'] else img_unit
@@ -71,7 +68,7 @@ def save_tiff(array, filepath, img_unit, img_scale):
         raise ValueError(f"Unsupported array shape: {array.shape}")
     tifffile.imwrite(
         filepath,
-        array.astype(np.float32),
+        array.astype(scalar_type),
         imagej=True,
         resolution=(1.0 / x_pix, 1.0 / y_pix),
         metadata=meta
@@ -79,43 +76,6 @@ def save_tiff(array, filepath, img_unit, img_scale):
 
     print(f">> Saved {meta['axes']} to {filepath}")
     print(f">> Scaling: {x_pix:.4f}x{y_pix:.4f}x{z_pix:.4f} {clean_unit}")
-
-
-def save_video_multiple(folderpath, frame_len_ms=100, ext="mp4"):
-    files = np.array(sorted(f for f in os.listdir(folderpath) if re.match(r"z-\d+_.+\.png", f)))
-    suffixes = np.unique([re.match(r"z-\d+(_.+)\.png", f).group(1) for f in files])
-    fps = 1000 / frame_len_ms
-
-    def pad_to_size(img, shape_, fill=0):
-        h, w = img.shape[:2]
-        th, tw = shape_[:2]
-        pad_top, pad_bottom = (th - h) // 2, th - h - (th - h) // 2
-        pad_left, pad_right = (tw - w) // 2, tw - w - (tw - w) // 2
-        if img.ndim == 2:
-            return np.pad(img, ((pad_top, pad_bottom), (pad_left, pad_right)), constant_values=fill)
-        else:
-            return np.pad(img, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), constant_values=fill)
-
-    def pad_to_multiple_of_16(img):
-        h, w = img.shape[:2]
-        th = ((h + 15) // 16) * 16
-        tw = ((w + 15) // 16) * 16
-        return pad_to_size(img, (th, tw, img.shape[2] if img.ndim == 3 else 1))
-
-    for suf in suffixes:
-        print(f">> Saving {ext} for {suf}...")
-        matched = sorted([f for f in files if f.endswith(suf + ".png")],
-                         key=lambda x: int(re.search(r"z-(\d+)_", x).group(1)))
-        imgs = [imageio.imread(os.path.join(folderpath, f)) for f in matched]
-        max_h = max(img.shape[0] for img in imgs)
-        max_w = max(img.shape[1] for img in imgs)
-        target_shape = (max_h, max_w, imgs[0].shape[2] if imgs[0].ndim == 3 else 1)
-        imgs = [pad_to_size(img, target_shape) for img in imgs]
-        imgs = [pad_to_multiple_of_16(img) for img in imgs]
-        outpath = os.path.join(folderpath, suf[1:] + f".{ext}")
-        imageio.mimsave(outpath, imgs, fps=fps)
-
-    print(f">> Saved {len(suffixes)} {ext} files in {folderpath}!")
 
 
 ####################

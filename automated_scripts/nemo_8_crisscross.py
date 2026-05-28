@@ -72,7 +72,7 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
 
     plot_hist(crisscross_mag, title="Criss-Cross Strength", xlim=[0, 1],
               savefig=os.path.join(resfig_dir,
-                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_crisscross_mag.pdf"),
+                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_crisscross_mag.png"),
               hidefig=hidefig)
 
     plot_dir_field(directors=field_1, veclength=10, view_init=(20, 0),
@@ -80,20 +80,24 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
                    cmap_label="Criss-Cross Strength", show_axes=False, manual_vminmax=[0, 1],
                    cmap="coolwarm",
                    savefig=os.path.join(resfig_dir,
-                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.pdf"),
+                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.png"),
                    hidefig=hidefig)
     plotted_vecfields = np.concatenate((field_2, field_1), axis=0)
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=plotted_vecfields[:, :3])
-    vec_dir_phi, vec_dir_theta = spherical_project_vectors(plotted_vecfields[:, :3],
-                                                           plotted_vecfields[:, 3:])
-    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
-                              cmap="Greys", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
-                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
-                              veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
-                              vec_manual_vminmax=[0, 1], vec_cmap="coolwarm", vec_cmap_label="criss cross magnitude",
-                              savefig=os.path.join(resfig_dir,
-                                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.pdf"),
-                              hidefig=hidefig)
+    try:
+        sph_proj_phi, sph_proj_theta = spherical_project(pts=plotted_vecfields[:, :3])
+        vec_dir_phi, vec_dir_theta = spherical_project_vectors(plotted_vecfields[:, :3],
+                                                               plotted_vecfields[:, 3:])
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
+                                  cmap="Greys", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
+                                  vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
+                                  veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
+                                  vec_manual_vminmax=[0, 1], vec_cmap="coolwarm",
+                                  vec_cmap_label="criss cross magnitude",
+                                  savefig=os.path.join(resfig_dir,
+                                                       f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.png"),
+                                  hidefig=hidefig)
+    except Exception as e:
+        print(f"Encountered error during spherical projection: {e}")
 
     proj_layer_1 = load_array("intensities", folderpath=os.path.join(resdata_dir, layer_name_1))
     proj_layer_2 = load_array("intensities", folderpath=os.path.join(resdata_dir, layer_name_2))

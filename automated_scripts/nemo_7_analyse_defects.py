@@ -111,7 +111,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                    marker=np.vstack([layer_mesh.vertices[i] for i in calc_charge_loop_idxs]),
                    pt_label="Charge Calculation Line",
                    pt_alpha=1.0, cmap_label="order parameter $S$", manual_vminmax=[0, 1],
-                   savefig=os.path.join(resfig_dir_layer, f"top-charge-loops.pdf"),
+                   savefig=os.path.join(resfig_dir_layer, f"top-charge-loops.png"),
                    hidefig=hidefig)
 
     m_charge_extended = np.full(len(layer_mesh.vertices), 0.0)
@@ -142,7 +142,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                    cmap_label="topological charge $m$",
                    manual_vminmax=[-1, 1], show_axes=False,
                    marker=layer_mesh.vertices[idxs_sel[defect_idxs_calc]],
-                   savefig=os.path.join(resfig_dir_layer, f"top-charge-shaded.pdf"),
+                   savefig=os.path.join(resfig_dir_layer, f"top-charge-shaded.png"),
                    hidefig=hidefig)
 
     # ==== Save result ====
@@ -153,7 +153,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
 
     # ==== Plot result ====
     plot_hist(m_charge, title=f"Sum(m)={np.nansum(m_charge)}",
-              savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.pdf"),
+              savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.png"),
               hidefig=hidefig)
 
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
@@ -163,7 +163,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                               vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
                               vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
                               vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
-                              savefig=os.path.join(resfig_dir_layer, f"defect-charges.pdf"), hidefig=hidefig,
+                              savefig=os.path.join(resfig_dir_layer, f"defect-charges.png"), hidefig=hidefig,
                               marker_idxs=idxs_sel[defect_idxs_calc],
                               marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"))
 
@@ -185,21 +185,24 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     save_array(charge_pol_linked_idxs, name=f"def-pol_2dcurved_idxs_expanded", header="idx",
                folderpath=resdata_dir_layer)
     save_array(pol_idxs, name=f"def-pol_2dcurved_idxs", header="idx", folderpath=resdata_dir_layer)
-
-    sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
-    vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
-                                                           directors_2dcurved_avg[:, 3:])
-    pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:])
-    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
-                              vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
-                              vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
-                              vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
-                              savefig=os.path.join(resfig_dir_layer, f"defect-polarisations.pdf"), hidefig=hidefig,
-                              marker_idxs=idxs_sel[defect_idxs_calc],
-                              marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
-                              marker_vec=(pol_dir_phi, pol_dir_theta, idxs_sel[pol_idxs]),
-                              marker_vec_color=color_scalar(m_charge[charge_pol_linked_idxs], manual_vminmax=[-1, 1],
-                                                            cmap="rainbow"))
+    try:
+        sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+        vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
+                                                               directors_2dcurved_avg[:, 3:])
+        pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:])
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                                  vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                                  vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                                  vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                                  savefig=os.path.join(resfig_dir_layer, f"defect-polarisations.png"), hidefig=hidefig,
+                                  marker_idxs=idxs_sel[defect_idxs_calc],
+                                  marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
+                                  marker_vec=(pol_dir_phi, pol_dir_theta, idxs_sel[pol_idxs]),
+                                  marker_vec_color=color_scalar(m_charge[charge_pol_linked_idxs],
+                                                                manual_vminmax=[-1, 1],
+                                                                cmap="rainbow"))
+    except Exception as e:
+        print(f"Encountered error during spherical projection: {e}")
     if render:
         view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg, mesh_shading="flat",
                                     mesh_vert_colors=color_scalar(proj_layer, normalise=True,

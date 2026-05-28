@@ -97,18 +97,18 @@ def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k,
 
     # ==== Plot Gauss & mean curvature ====
     plot_hist(full_c_gauss, title=f"Gauss AVG = {full_c_gauss.mean():.2e} $(1/{img_unit}^2)$",
-              savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_hist_{patch_label}.pdf"),
+              savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_hist_{patch_label}.png"),
               hidefig=hidefig)
     plot_hist(full_c_mean, title=f"Mean AVG = {full_c_mean.mean():.2e} $(1/{img_unit})$",
-              savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_hist_{patch_label}.pdf"),
+              savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_hist_{patch_label}.png"),
               hidefig=hidefig)
     plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_gauss, cmap="coolwarm",
                      interp_grid_n=200, cmap_label=f"Gaussian Curvature $(1/{img_unit}^2)$",
-                     savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_curv_{patch_label}.pdf"),
+                     savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_curv_{patch_label}.png"),
                      hidefig=hidefig)
     plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_mean, cmap="Spectral",
                      interp_grid_n=200, cmap_label=f"Mean Curvature $(1/{img_unit})$",
-                     savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_curv_{patch_label}.pdf"),
+                     savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_curv_{patch_label}.png"),
                      hidefig=hidefig)
 
     save_array(np.column_stack(([num_samples], [radius], [interp_k])),
