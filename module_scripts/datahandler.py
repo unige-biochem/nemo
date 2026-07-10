@@ -10,7 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 import trimesh
-from tifffile import tifffile
+import tifffile
 
 
 #####################
@@ -37,7 +37,7 @@ def load_array(name, folderpath, return_df=False, debug=True):
 
 
 def save_array(array, name, header, folderpath, delimiter=","):
-    create_dir(folderpath)
+    os.makedirs(folderpath, exist_ok=True)
     filepath = os.path.join(folderpath, f"{name}.csv")
     np.savetxt(filepath, array, delimiter=delimiter, header=header)
     print(f">> Saved {filepath} !")
@@ -99,27 +99,22 @@ def load_mesh(filepath):
 
 def save_mesh(mesh, filepath):
     print(f">> Saving mesh to {filepath}...")
-    create_dir(os.path.dirname(filepath))
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     _ = mesh.export(filepath)
 
 
 ################################
 # DIRECTORY MANAGEMENT MODULES #
 ################################
-def create_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
 
 def create_resdirs(path, ct_label=None):
+    base_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0])
     if ct_label is not None:
-        resfig_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0],
-                                  ct_label, "figures")
-        resdata_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0],
-                                   ct_label, "data")
-    else:
-        resfig_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "figures")
-        resdata_dir = os.path.join(os.path.dirname(path), os.path.splitext(os.path.basename(path))[0], "data")
-    create_dir(resfig_dir)
-    create_dir(resdata_dir)
+        base_dir = os.path.join(base_dir, ct_label)
+
+    resdata_dir = os.path.join(base_dir, "data")
+    resfig_dir = os.path.join(base_dir, "figures")
+
+    os.makedirs(resdata_dir, exist_ok=True)
+    os.makedirs(resfig_dir, exist_ok=True)
     return resdata_dir, resfig_dir

@@ -15,13 +15,13 @@ Welcome to **NEMO**, the **Nematics and Morphology Image Analysis Toolkit**.
 This toolkit provides advanced 3D image analysis modules, enabling the study of nematics and
 morphological features through a combination of customizable scripts and batch processing capabilities.
 
-Fully developed in Python, NEMO reads hyperstack TZCYX .tif(f) files, and performs:
+Fully developed in Python, NEMO reads hyperstack TZCYX .tif(f) files, and can perform:
 
-- Mesh segmentation
-- Mesh curvature and thickness measurements
-- Projection onto mesh
-- Nematic order quantification
-- Topological defects characterisation
+- Mesh segmentations
+- Mesh curvature and inter-mesh thickness calculations
+- Mesh projections
+- Tangential nematic analyses
+- Topological defect characterisations
 
 The output consists of a folder structure containing the raw data and result figures, customisable and loadable by the
 user at any step in the pipeline.
@@ -58,7 +58,7 @@ NEMO/
 ├── environment.yml                  # Required Python libraries compatible with any conda
 ├── MAIN.ipynb                       # Main Pipeline Workspace Notebook
 ├── BATCH.ipynb                      # Batch Analysis Notebook
-├── tiff_simulator.ipynb             # Generation of synthetic test data
+├── nematic-on-vesicle.ipynb         # Generation of synthetic test example
 └── README.md                        # This README
 ```  
 
@@ -105,7 +105,7 @@ jupyter lab
 - The primary interface for interactive analysis is the **`MAIN.ipynb`**. You can open it using Jupyter:
 
 ```bash
-jupyter notebook MAIN.ipynb
+jupyter notebook manuscript_simulated.ipynb
 ```
 
 ---

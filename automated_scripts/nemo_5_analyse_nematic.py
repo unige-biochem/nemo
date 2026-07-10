@@ -32,12 +32,6 @@ from module_scripts.visuals import (
 
 # Import Python essentials
 import numpy as np
-import argparse
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    return parser.parse_args()
 
 
 def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_figures=True, render=False):
@@ -152,7 +146,7 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
         view_colored_mesh(mesh=layer_mesh, vert_colors=color_scalar(
             interpolate_on_mesh(layer_mesh, value_idxs=idxs_sel, values=s_2dcurv, k=20),
             manual_vminmax=[0, 1]))
-    save_array(np.column_stack(([avg_size])),
+    save_array(np.array([[avg_size]]),
                name=f"{nematic_avg_label}_nematic-analysis_parameters",
                header=f"{avg_mode}",
                folderpath=resdata_dir_layer)

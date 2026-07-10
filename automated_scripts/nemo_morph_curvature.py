@@ -28,8 +28,8 @@ import numpy as np
 
 
 def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k, show_figures=True, flip_normals=False,
-         custom_basis=None, render=False, gauss_crop_range=None, mean_crop_range=None):
-    print(f">> Attempting to perform cylindrical analysis of gastruloid {img_path}!")
+         custom_basis=None, render=False, gauss_crop_range=None, mean_crop_range=None, plot_maxprojections=False):
+    print(f">> Attempting to compute the curvature for a mesh of {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
         return None
@@ -102,22 +102,27 @@ def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k,
     plot_hist(full_c_mean, title=f"Mean AVG = {full_c_mean.mean():.2e} $(1/{img_unit})$",
               savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_hist_{patch_label}.png"),
               hidefig=hidefig)
-    plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_gauss, cmap="coolwarm",
-                     interp_grid_n=200, cmap_label=f"Gaussian Curvature $(1/{img_unit}^2)$",
-                     savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_curv_{patch_label}.png"),
-                     hidefig=hidefig)
-    plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_mean, cmap="Spectral",
-                     interp_grid_n=200, cmap_label=f"Mean Curvature $(1/{img_unit})$",
-                     savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_curv_{patch_label}.png"),
-                     hidefig=hidefig)
+    if plot_maxprojections:
+        plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_gauss, cmap="coolwarm",
+                         interp_grid_n=200, cmap_label=f"Gaussian Curvature $(1/{img_unit}^2)$",
+                         savefig=os.path.join(resfig_dir, f"{mesh_name}_gauss_curv_{patch_label}.png"),
+                         hidefig=hidefig, manual_vminmax=[-max(abs(full_c_gauss.min()), abs(full_c_gauss.max())),
+                                                          max(abs(full_c_gauss.min()), abs(full_c_gauss.max()))])
+        plot_maxproj_pts(verts=mesh_curv.vertices, unit=img_unit, colors=full_c_mean, cmap="Spectral",
+                         interp_grid_n=200, cmap_label=f"Mean Curvature $(1/{img_unit})$",
+                         savefig=os.path.join(resfig_dir, f"{mesh_name}_mean_curv_{patch_label}.png"),
+                         hidefig=hidefig)
 
-    save_array(np.column_stack(([num_samples], [radius], [interp_k])),
+    save_array(np.array([[num_samples, radius, interp_k]]),
                name=f"{mesh_name}_curvature_parameters",
                header="numcalc,radius,interp_k", folderpath=resdata_dir)
     if render:
         # ==== 3D render result ====
         view_colored_mesh_multiple([mesh_curv, mesh_curv],
-                                   [color_scalar(full_c_gauss, normalise=True, cmap="coolwarm"),
+                                   [color_scalar(full_c_gauss,
+                                                 manual_vminmax=[-max(abs(full_c_gauss.min()), abs(full_c_gauss.max())),
+                                                                 max(abs(full_c_gauss.min()), abs(full_c_gauss.max()))],
+                                                 cmap="coolwarm"),
                                     color_scalar(full_c_mean, normalise=True, cmap="Spectral")],
                                    name_list=["Gauss", "Mean"])
     return mesh_curv, full_c_gauss, full_c_mean

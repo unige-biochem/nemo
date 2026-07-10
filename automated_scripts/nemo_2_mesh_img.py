@@ -24,7 +24,45 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iterations, show_figures=True,
+def _process_and_save(mesh_or_meshes, name, resdata_dir, resfig_dir, img_raw, img_scale, img_unit, hidefig,
+                      mesh_colors=None):
+    meshes = mesh_or_meshes if isinstance(mesh_or_meshes, list) else [mesh_or_meshes]
+    meshes = [m for m in meshes if m is not None]
+    if not meshes:
+        return
+
+    for m in meshes:
+        m.remove_degenerate_faces()
+        m.remove_duplicate_faces()
+
+    if not isinstance(mesh_or_meshes, list) and meshes:
+        save_mesh(meshes[0], os.path.join(resdata_dir, f"{name}.ply"))
+
+    plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=meshes,
+             show_mesh_normals=False, cmap="Greys_r", mesh_colors=mesh_colors,
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{name}.png"), hidefig=hidefig)
+    plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=meshes,
+             show_mesh_normals=True, cmap="Greys_r", mesh_colors=mesh_colors,
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{name}_normals.png"), hidefig=hidefig)
+    plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=meshes, cmap="Greys",
+             max_proj=True, mesh_colors=mesh_colors,
+             savefig=os.path.join(resfig_dir, f"sliced_raw_{name}_maxproj.png"), hidefig=hidefig)
+
+
+def _get_largest_submesh(mesh):
+    try:
+        if mesh is None:
+            return None
+        submeshes = analysis.find_connected_meshes(mesh=mesh)
+        if not submeshes:
+            return None
+        return submeshes[np.argmax([m.vertices.shape[0] for m in submeshes])]
+    except Exception as e:
+        print(f"[!] Issue finding submeshes: {e}")
+        return None
+
+
+def main(img_path, t_select, c_select, box_size, taubin_smooth_passband, taubin_smooth_iterations, show_figures=True,
          split_mode="inner/out", render=False):
     print(f">> Attempting to mesh image {img_path}!")
     if not os.path.exists(img_path):
@@ -51,106 +89,108 @@ def main(img_path, t_select, c_select, box_size, smooth_factor, smooth_iteration
     full_mesh = analysis.marching_cubes(img=img_thresh_raw, scale=img_thresh_scale, level=0.5, step_size=box_size)
     full_mesh_name = "full_mesh"
 
-    # ==== Save mesh(es) ====
-    save_mesh(full_mesh, os.path.join(resdata_dir, f"{full_mesh_name}.ply"))
+    raw_meshes = [{"mesh": full_mesh, "color": "white", "title": "FULL"}]
+    smooth_meshes = []
+    smooth_subset_meshes = []
 
-    # ==== Plot image slices with mesh overlay ====
-    plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[full_mesh],
-             show_mesh_normals=True, cmap="Greys_r",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}.png"), hidefig=hidefig)
-    plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[full_mesh], cmap="Greys",
-             max_proj=True, savefig=os.path.join(resfig_dir,
-                                                 f"sliced_raw_{full_mesh_name}_maxproj.png"),
-             hidefig=hidefig)
+    # ==== Process Full Mesh ====
+    _process_and_save(full_mesh, full_mesh_name, resdata_dir, resfig_dir, img_raw, img_scale, img_unit, hidefig)
     print(f"MESH {full_mesh_name}: # VERTICES = {len(full_mesh.vertices)} !")
 
+    # ==== Smooth Full Mesh ====
+    full_mesh_smooth = analysis.taubin_smooth_mesh(mesh=full_mesh, n_iter=taubin_smooth_iterations,
+                                                   pass_band=taubin_smooth_passband)
+    if full_mesh_smooth is not None:
+        smooth_meshes.append({"mesh": full_mesh_smooth, "color": "white", "title": "FULL SMOOTH"})
+        _process_and_save(full_mesh_smooth, f"{full_mesh_name}_smooth", resdata_dir, resfig_dir, img_raw, img_scale,
+                          img_unit, hidefig)
+
+    # ==== Subset Full Mesh ====
+    mesh_smooth_subset_largest = _get_largest_submesh(full_mesh_smooth)
+    if mesh_smooth_subset_largest is not None:
+        smooth_subset_meshes.append(
+            {"mesh": mesh_smooth_subset_largest, "color": "white", "title": "FULL SMOOTH SUBSET"})
+        _process_and_save(mesh_smooth_subset_largest, f"{full_mesh_name}_smooth_subset", resdata_dir, resfig_dir,
+                          img_raw, img_scale, img_unit, hidefig)
+
+    # ==== Evaluate Split Mode ====
     if split_mode == "along_z":
-        mesh_sel_mask = np.einsum('ij,ij->i', np.array([[1, 0, 0] for _ in range(len(full_mesh.vertices))]),
-                                  full_mesh.vertex_normals) < 0
+        mesh_sel_mask = full_mesh.vertex_normals[:, 0] < 0
     elif split_mode == "radial_spherical":
         mesh_sel_mask = np.einsum('ij,ij->i', full_mesh.vertices - np.mean(full_mesh.vertices, axis=0),
                                   full_mesh.vertex_normals) > 0
     elif split_mode == "radial_cylindrical":
-        centered_verts = full_mesh.vertices - np.mean(full_mesh.vertices, axis=0)
-        cylinder_axis = "x"
-        axis_idx = {'z': 2, 'y': 1, 'x': 0}.get(cylinder_axis.lower(), 2)
-        radial_vecs = centered_verts.copy()
-        radial_vecs[:, axis_idx] = 0
+        radial_vecs = full_mesh.vertices - np.mean(full_mesh.vertices, axis=0)
+        radial_vecs[:, 0] = 0
         mesh_sel_mask = np.einsum('ij,ij->i', radial_vecs, full_mesh.vertex_normals) > 0
     else:
         print(f"[!] Unrecognised splitting mode {split_mode} !")
         return None
-
+    print(f">> Applying splitting mode {split_mode}...")
     # ==== Apply sub-mesh selection ====
-    inner_mesh = analysis.sel_submesh(mesh=full_mesh, mask=mesh_sel_mask)
-    outer_mesh = analysis.sel_submesh(mesh=full_mesh, mask=~mesh_sel_mask)
-    save_mesh(inner_mesh, os.path.join(resdata_dir, "inner_mesh.ply"))
-    save_mesh(outer_mesh, os.path.join(resdata_dir, "outer_mesh.ply"))
+    try:
+        inner_mesh = analysis.sel_submesh(mesh=full_mesh, mask=mesh_sel_mask)
+        outer_mesh = analysis.sel_submesh(mesh=full_mesh, mask=~mesh_sel_mask)
+        print(inner_mesh, outer_mesh)
+        valid_split_meshes = []
+        valid_split_colors = []
+        split_items = []
 
-    plot_img(img=img_raw, scale=img_scale, unit=img_unit, cmap="Greys_r",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split.png"),
-             meshes=[inner_mesh, outer_mesh], show_mesh_normals=True,
-             mesh_colors=["red", "blue"], hidefig=hidefig)
-    plot_img(img=img_raw, scale=img_scale, unit=img_unit, cmap="Greys",
-             savefig=os.path.join(resfig_dir, f"sliced_raw_{full_mesh_name}-split_maxproj.png"),
-             meshes=[inner_mesh, outer_mesh], max_proj=True,
-             mesh_colors=["red", "blue"], hidefig=hidefig)
+        if inner_mesh is not None:
+            inner_mesh.remove_degenerate_faces()
+            inner_mesh.remove_duplicate_faces()
+            save_mesh(inner_mesh, os.path.join(resdata_dir, "inner_mesh.ply"))
+            valid_split_meshes.append(inner_mesh)
+            valid_split_colors.append("red")
+            raw_meshes.append({"mesh": inner_mesh, "color": "red", "title": "INNER"})
+            split_items.append((inner_mesh, "inner_mesh_smooth", "INNER SMOOTH", "red", "INNER SMOOTH SUBSET"))
 
-    mesh_names = ["full_mesh_smooth", "inner_mesh_smooth", "outer_mesh_smooth"]
-    raw_meshes = [full_mesh, inner_mesh, outer_mesh]
-    smooth_meshes = []
-    smooth_subset_meshes = []
-    for i, mesh_i in enumerate(raw_meshes):
-        # ==== Smooth mesh(es) ====
-        mesh_i_smooth = analysis.taubin_smooth_mesh(mesh=mesh_i, n_iter=smooth_iterations,
-                                                    pass_band=smooth_factor)
-        # ==== Save mesh(es) ====
-        save_mesh(mesh_i_smooth, os.path.join(resdata_dir, f"{mesh_names[i]}.ply"))
-        smooth_meshes.append(mesh_i_smooth)
+        if outer_mesh is not None:
+            outer_mesh.remove_degenerate_faces()
+            outer_mesh.remove_duplicate_faces()
+            save_mesh(outer_mesh, os.path.join(resdata_dir, "outer_mesh.ply"))
+            valid_split_meshes.append(outer_mesh)
+            valid_split_colors.append("blue")
+            raw_meshes.append({"mesh": outer_mesh, "color": "blue", "title": "OUTER"})
+            split_items.append((outer_mesh, "outer_mesh_smooth", "OUTER SMOOTH", "blue", "OUTER SMOOTH SUBSET"))
 
-        # ==== Plot image slices with mesh overlay ====
-        plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth],
-                 show_mesh_normals=True, cmap="Greys_r",
-                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}.png"), hidefig=hidefig)
-        plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth], cmap="Greys",
-                 max_proj=True, savefig=os.path.join(resfig_dir,
-                                                     f"sliced_raw_{mesh_names[i]}_maxproj.png"),
-                 hidefig=hidefig)
+        if valid_split_meshes:
+            _process_and_save(valid_split_meshes, f"{full_mesh_name}-split", resdata_dir, resfig_dir, img_raw,
+                              img_scale, img_unit, hidefig, mesh_colors=valid_split_colors)
 
-        try:
-            mesh_i_smooth_subsets = analysis.find_connected_meshes(mesh=mesh_i_smooth)
-        except:
-            print(f"[!] Issue finding submeshes of {mesh_names[i]} !")
-            mesh_i_smooth_subsets = [mesh_i_smooth]
-        sizes = [mesh.vertices.shape[0] for mesh in mesh_i_smooth_subsets]
-        mesh_i_smooth_subsets_largest = mesh_i_smooth_subsets[np.argmax(sizes)]
+        for mesh_i, name_smooth, title_smooth, color, title_subset in split_items:
+            mesh_i_smooth = analysis.taubin_smooth_mesh(mesh=mesh_i, n_iter=taubin_smooth_iterations,
+                                                        pass_band=taubin_smooth_passband)
+            if mesh_i_smooth is not None:
+                smooth_meshes.append({"mesh": mesh_i_smooth, "color": color, "title": title_smooth})
+                _process_and_save(mesh_i_smooth, name_smooth, resdata_dir, resfig_dir, img_raw, img_scale, img_unit,
+                                  hidefig)
 
-        # ==== Save mesh(es) ====
-        save_mesh(mesh_i_smooth_subsets_largest,
-                  os.path.join(resdata_dir, f"{mesh_names[i]}_subset.ply"))
-        smooth_subset_meshes.append(mesh_i_smooth_subsets_largest)
+                mesh_i_subset = _get_largest_submesh(mesh_i_smooth)
+                if mesh_i_subset is not None:
+                    smooth_subset_meshes.append({"mesh": mesh_i_subset, "color": color, "title": title_subset})
+                    _process_and_save(mesh_i_subset, f"{name_smooth}_subset", resdata_dir, resfig_dir, img_raw,
+                                      img_scale, img_unit, hidefig)
 
-        # ==== Plot image slices with mesh overlay ====
-        plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth_subsets_largest],
-                 show_mesh_normals=True, cmap="Greys_r",
-                 savefig=os.path.join(resfig_dir, f"sliced_raw_{mesh_names[i]}_subset.png"),
-                 hidefig=hidefig)
-        plot_img(img=img_raw, scale=img_scale, unit=img_unit, meshes=[mesh_i_smooth_subsets_largest], cmap="Greys",
-                 max_proj=True, savefig=os.path.join(resfig_dir,
-                                                     f"sliced_raw_{mesh_names[i]}_subset_maxproj.png"),
-                 hidefig=hidefig)
+    except Exception as e:
+        print(f"[!] Could not split mesh: {e}")
 
     if render:
-        view_mesh(mesh_list=raw_meshes, mesh_colors=["white", "red", "blue"], mesh_titles=["FULL", "INNER", "OUTER"],
-                  img=img_raw, scale=img_scale, vec_freq=100, hide_vectors=False, vec_length=10,
-                  vec_edge_width=0.2)
-        view_mesh(mesh_list=smooth_meshes, mesh_colors=["white", "red", "blue"],
-                  mesh_titles=["FULL SMOOTH", "INNER SMOOTH", "OUTER SMOOTH"], img=img_raw, scale=img_scale,
-                  vec_freq=100, hide_vectors=False, vec_length=10, vec_edge_width=0.2)
-        view_mesh(mesh_list=smooth_subset_meshes, mesh_colors=["white", "red", "blue"],
-                  mesh_titles=["FULL SMOOTH SUBSET", "INNER SMOOTH SUBSET", "OUTER SMOOTH SUBSET"], img=img_raw,
-                  scale=img_scale, vec_freq=100, hide_vectors=False, vec_length=10, vec_edge_width=0.2)
-    save_array(np.column_stack(([box_size], [smooth_factor], [smooth_iterations])),
-               name="meshing_parameters",
-               header="box_size,smooth_factor,smooth_iterations", folderpath=resdata_dir)
-    return raw_meshes, smooth_meshes, smooth_subset_meshes
+        if raw_meshes:
+            view_mesh(mesh_list=[m["mesh"] for m in raw_meshes], mesh_colors=[m["color"] for m in raw_meshes],
+                      mesh_titles=[m["title"] for m in raw_meshes], img=img_raw, scale=img_scale, vec_freq=100,
+                      hide_vectors=False, vec_length=10, vec_edge_width=0.2)
+        if smooth_meshes:
+            view_mesh(mesh_list=[m["mesh"] for m in smooth_meshes], mesh_colors=[m["color"] for m in smooth_meshes],
+                      mesh_titles=[m["title"] for m in smooth_meshes], img=img_raw, scale=img_scale, vec_freq=100,
+                      hide_vectors=False, vec_length=10, vec_edge_width=0.2)
+        if smooth_subset_meshes:
+            view_mesh(mesh_list=[m["mesh"] for m in smooth_subset_meshes],
+                      mesh_colors=[m["color"] for m in smooth_subset_meshes],
+                      mesh_titles=[m["title"] for m in smooth_subset_meshes], img=img_raw, scale=img_scale,
+                      vec_freq=100, hide_vectors=False, vec_length=10, vec_edge_width=0.2)
+
+    save_array(np.array([[box_size, taubin_smooth_passband, taubin_smooth_iterations]]),
+               name="meshing_parameters", header="box_size,taubin_smooth_passband,taubin_smooth_iterations",
+               folderpath=resdata_dir)
+    return None

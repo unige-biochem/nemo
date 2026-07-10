@@ -26,12 +26,6 @@ from module_scripts.visuals import (
 
 # Import Python essentials
 import numpy as np
-import argparse
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    return parser.parse_args()
 
 
 def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cutoff_defect_localisation,
@@ -74,7 +68,8 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
                                                      unit=img_unit,
                                                      max_candidates=max_candidates_defect_localisation)
     save_array(defect_idxs, name="defect-idxs", header="idx", folderpath=resdata_dir_layer)
-
+    save_array(rel_dists, name="defect_rel-dists", header=f"vert_idx_1,vert_idx_2,dist)",
+               folderpath=resdata_dir_layer)
     plot_dir_field(directors=directors_2dcurved_avg, veclength=1, veccolor="red",
                    marker=directors_2dcurved_avg[:, :3][defect_idxs],
                    pt_label="Defect Locations", vec_alpha=0.5, freq=5,
@@ -106,9 +101,8 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
                                     markers=defect_coords,
                                     marker_colors=color_scalar(np.linspace(0, 1, len(defect_coords)),
                                                                "Set1"))
-    save_array(np.column_stack(
-        ([dist_cutoff_defect_localisation], [max_candidates_defect_localisation])),
-        name=f"defect-extraction_parameters",
-        header="dist_cutoff_defect_localisation,max_candidates_defect_localisation",
-        folderpath=resdata_dir_layer)
+    save_array(np.array([[dist_cutoff_defect_localisation, max_candidates_defect_localisation]]),
+               name=f"defect-extraction_parameters",
+               header="dist_cutoff_defect_localisation,max_candidates_defect_localisation",
+               folderpath=resdata_dir_layer)
     return layer_label, layer_mesh, proj_layer, directors_2dcurved_avg, s_2dcurv, defect_coords

@@ -33,7 +33,7 @@ def main(img_path, t_select, c_select, img_slice_colour="Greens_r", img_maxproj_
     resdata_dir, resfig_dir = create_resdirs(img_path, ct_label=f"t={t_select}_c={c_select}")
 
     # ==== Plot image slices and max projections ====
-    z_i, y_i, x_i = int(img_dim[0] // 2), int(img_dim[1] // 2), int(img_dim[2] // 2)
+    z_i, y_i, x_i = (int(dim // 2) for dim in img_dim[:3])
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, x_i=x_i, y_i=y_i, z_i=z_i,
              savefig=os.path.join(resfig_dir, "sliced_raw.png"), cmap=img_slice_colour, hidefig=hidefig)
     plot_img(img=img_raw, scale=img_scale, unit=img_unit, max_proj=True, cmap=img_maxproj_colour,

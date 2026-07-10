@@ -24,6 +24,7 @@ from skimage import measure
 from skimage.filters import threshold_yen
 from sklearn.neighbors import KDTree as KDTreeSklearn
 from tifffile import TiffFile
+import potpourri3d as pp3d
 
 from module_scripts.datahandler import load_array
 from module_scripts.visuals import plot_dist_kymograph, plot_interp_grid, plot_matrix
@@ -103,7 +104,9 @@ def tensprod(a, b):
     return np.tensordot(a, b, axes=2)
 
 
-def create_tangential_basis(normals, first_choice_axis=None, second_choice_axis=None, hide_output=True):
+#
+def old_create_tangential_basis(mesh, first_choice_axis=None, second_choice_axis=None, hide_output=True):
+    normals = mesh.vertex_normals
     if first_choice_axis is None:
         first_choice_axis = np.array([1, 0, 0])
     if second_choice_axis is None:
@@ -121,6 +124,36 @@ def create_tangential_basis(normals, first_choice_axis=None, second_choice_axis=
     t2_raw = np.cross(normals, t1_raw)
     t2_raw /= np.linalg.norm(t2_raw, axis=1, keepdims=True)
     return t1_raw, t2_raw
+
+
+def create_tangential_basis(mesh):
+    print(f">> Creating tangential basis ...")
+    solver = pp3d.MeshVectorHeatSolver(mesh.vertices, mesh.faces)
+    basisX, basisY, basisN = solver.get_tangent_frames()
+
+    source_vertex_idx = 0
+    normal = basisN[source_vertex_idx]
+
+    neighbor_indices = mesh.vertex_neighbors[source_vertex_idx]
+    edge_vector = mesh.vertices[neighbor_indices[0]] - mesh.vertices[source_vertex_idx]
+
+    tangent_3d = edge_vector - np.dot(edge_vector, normal) * normal
+    tangent_3d = tangent_3d / np.linalg.norm(tangent_3d)
+    vec_2d = [np.dot(tangent_3d, basisX[source_vertex_idx]),
+              np.dot(tangent_3d, basisY[source_vertex_idx])]
+
+    transported_2d = solver.transport_tangent_vector(source_vertex_idx, vec_2d)
+
+    tan_x = (transported_2d[:, 0, np.newaxis] * basisX +
+             transported_2d[:, 1, np.newaxis] * basisY)
+    tan_x = tan_x / np.linalg.norm(tan_x, axis=1, keepdims=True)
+    tan_y = np.cross(basisN, tan_x)
+    tan_y = tan_y / np.linalg.norm(tan_y, axis=1, keepdims=True)
+
+    if np.sum(np.isnan(tan_x)) > 0 or np.sum(np.isnan(tan_y)) > 0:
+        print(f"[!] Nans detected in tangent vector propagation, resorting to old algorithm...")
+        tan_x, tan_y = old_create_tangential_basis(mesh=mesh)
+    return tan_x, tan_y
 
 
 def rescale_val_xyz(val, scale, debug=False):
@@ -383,14 +416,18 @@ def yen_thresh(img):
 
 def thresh_img(img, thresh, inverse=True, keep_values_above=False):
     print(f">> Applying threshold {thresh}...")
-    img_thresh = np.copy(img)
+
     if inverse:
         mask = img < thresh
     else:
         mask = img > thresh
-    img_thresh[mask] = 0
-    if not keep_values_above:
+
+    if keep_values_above:
+        img_thresh = np.where(mask, 0, img)
+    else:
+        img_thresh = np.zeros_like(img, dtype=np.uint8)
         img_thresh[~mask] = 1
+
     return img_thresh
 
 
@@ -407,14 +444,21 @@ def marching_cubes(img, scale, level, step_size, allow_degenerate=False):
 
 def sel_submesh(mesh, mask):
     print(f">> Identifying surfaces using mask...")
+    if not np.any(mask):
+        return None
     verts, faces, normals = mesh.vertices, mesh.faces, mesh.vertex_normals
-    original_indices = np.where(mask)[0]
-    index_map = {old_idx: new_idx for new_idx, old_idx in enumerate(original_indices)}
-    masked_verts = verts[mask]
-    masked_faces = np.vectorize(index_map.get)(faces[np.all(mask[faces], axis=1)])
-    masked_normals = normals[mask]
-    masked_mesh = trimesh.Trimesh(vertices=masked_verts, faces=masked_faces, vertex_normals=masked_normals)
-    return masked_mesh
+    lookup = np.empty(verts.shape[0], dtype=np.int32)
+    lookup[mask] = np.arange(np.sum(mask))
+    valid_faces_mask = np.all(mask[faces], axis=1)
+    if not np.any(valid_faces_mask):
+        return None
+    masked_faces = lookup[faces[valid_faces_mask]]
+    return trimesh.Trimesh(
+        vertices=verts[mask],
+        faces=masked_faces,
+        vertex_normals=normals[mask],
+        process=False
+    )
 
 
 def find_connected_meshes(mesh):
@@ -433,31 +477,40 @@ def find_connected_meshes(mesh):
 # MESH PROCESSING MODULES #
 ###########################
 
-def taubin_smooth_mesh(mesh, n_iter=100, pass_band=0.01, recalc_normals=True):
+
+def taubin_smooth_mesh(mesh, n_iter=100, pass_band=0.01, boundary_smoothing=True):
     print(f">> Taubin smoothing mesh with {n_iter} iterations and pass band {pass_band}...")
     pvmesh = pv.PolyData()
     pvmesh.points = mesh.vertices
     pvmesh.faces = np.hstack([np.full((mesh.faces.shape[0], 1), 3), mesh.faces]).astype(int)
-    smooth_pvmesh = pvmesh.smooth_taubin(n_iter=n_iter, pass_band=pass_band)
+    smooth_pvmesh = pvmesh.smooth_taubin(n_iter=n_iter, pass_band=pass_band, boundary_smoothing=boundary_smoothing,
+                                         feature_smoothing=False)
     smooth_trimesh = trimesh.Trimesh(vertices=smooth_pvmesh.points, faces=smooth_pvmesh.faces.reshape((-1, 4))[:, 1:],
                                      face_normals=smooth_pvmesh.face_normals)
-    if recalc_normals:
-        smooth_trimesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(
-            vertex_count=len(smooth_trimesh.vertices), faces=smooth_trimesh.faces,
-            face_normals=smooth_trimesh.face_normals,
-            face_angles=smooth_trimesh.face_angles)
+    smooth_trimesh.vertex_normals = trimesh.geometry.weighted_vertex_normals(
+        vertex_count=len(smooth_trimesh.vertices), faces=smooth_trimesh.faces,
+        face_normals=smooth_trimesh.face_normals,
+        face_angles=smooth_trimesh.face_angles)
+    if np.mean(np.sum(smooth_trimesh.vertex_normals * mesh.vertex_normals, axis=1)) < 0:
+        smooth_trimesh.fix_normals(multibody=False)
     return smooth_trimesh
 
 
+def get_mean_edge_size(mesh):
+    mean_edge_size = float(mesh.edges_unique_length.mean())
+    return mean_edge_size
+
+
 def scale_mesh(mesh, distance):
-    print(f">> Scaling mesh ...")
-    mesh_scaled = mesh.copy()
-    mesh_scaled.vertices += mesh.vertex_normals * distance
-    mesh_scaled.vertex_normals = trimesh.geometry.weighted_vertex_normals(vertex_count=len(mesh_scaled.vertices),
-                                                                          faces=mesh_scaled.faces,
-                                                                          face_normals=mesh_scaled.face_normals,
-                                                                          face_angles=mesh_scaled.face_angles)
-    return mesh_scaled
+    print(f">> Scaling mesh by {distance} via vertex normals...")
+    if type(distance) == np.ndarray:
+        offset_vertices = mesh.vertices + (mesh.vertex_normals * distance[:, None])
+    else:
+        offset_vertices = mesh.vertices + (mesh.vertex_normals * distance)
+    out_mesh = trimesh.Trimesh(vertices=offset_vertices, faces=mesh.faces)
+    if np.dot(mesh.vertex_normals[0], out_mesh.vertex_normals[0]) < 0:
+        out_mesh.invert()
+    return out_mesh
 
 
 ########################
@@ -507,8 +560,8 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         print("[!] Using custom basis for curvature...")
         tan_x_cov, tan_y_cov = custom_basis[0][random_idxs], custom_basis[1][random_idxs]
     else:
-        print("[!] Using arbitrary tangential basis for curvature...")
-        tan_x_cov, tan_y_cov = create_tangential_basis(normals=normals, hide_output=True)
+        print("[!] Using smooth tangential basis for curvature...")
+        tan_x_cov, tan_y_cov = create_tangential_basis(mesh=mesh)
     g = np.array([gmetric(tan_x_cov[i], tan_y_cov[i]) for i in range(N)])
     g_inv = np.array([np.linalg.inv(g[i]) for i in range(N)])
     inter_calc = np.array(
@@ -626,7 +679,7 @@ def interpolate_on_mesh(mesh, value_idxs, values, k=10, eps=1e-8):
     return interpolated
 
 
-def geodesic_distmesh(mesh, index1, index2, debug=False):
+def old_dijkstra_geodesic_distmesh(mesh, index1, index2, debug=False):
     edges = mesh.edges_unique
     lengths = mesh.edges_unique_length
     num_vertices = len(mesh.vertices)
@@ -639,25 +692,45 @@ def geodesic_distmesh(mesh, index1, index2, debug=False):
     return geodesic_distance
 
 
-def select_geodesic_defects(order, mesh, idxs_sel, unit, dist_cutoff=50, max_candidates=10):
+def geodesic_distmesh(mesh, index1, index2, solver=None, debug=False):
+    if solver is None:
+        solver = pp3d.MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces)
+    distances = solver.compute_distance(index1)
+    geodesic_distance = distances[index2]
+    if debug:
+        print(
+            f"Geodesic distance between vertex #{index1} and #{index2}: {geodesic_distance}"
+        )
+    return geodesic_distance
+
+
+def select_geodesic_defects(
+        order, mesh, idxs_sel, unit, dist_cutoff=50, max_candidates=10
+):
     candidate_order = np.argsort(order)[:max_candidates]
     selected = []
-
+    solver = pp3d.MeshHeatMethodDistanceSolver(mesh.vertices, mesh.faces)
     for i in candidate_order:
         mesh_idx = idxs_sel[i]
         if not selected:
             selected.append(i)
             continue
-        dists = [geodesic_distmesh(mesh, mesh_idx, idxs_sel[j], debug=False) for j in selected]
+        dists = [
+            geodesic_distmesh(
+                mesh, mesh_idx, idxs_sel[j], solver=solver, debug=False
+            )
+            for j in selected
+        ]
         if all(d > dist_cutoff for d in dists):
             selected.append(i)
-
     print(f"Found {len(selected)} defects!")
     print("Relative distances between selected defects:")
     rel_dists = []
     for i, j in combinations(selected, 2):
-        d = geodesic_distmesh(mesh, idxs_sel[i], idxs_sel[j], debug=False)
-        rel_dists.append([i, j, d])
+        d = geodesic_distmesh(
+            mesh, idxs_sel[i], idxs_sel[j], solver=solver, debug=False
+        )
+        rel_dists.append([idxs_sel[i], idxs_sel[j], d])
         print(f"#{i} <-> #{j} = {d:.2f} {unit}")
     rel_dists = np.array(rel_dists)
     return selected, rel_dists
@@ -679,7 +752,7 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
     if min_dist_per_vert is None:
         min_dist_per_vert = np.full(len(verts), min_dist)
     else:
-        print(">> Overriding MIN distance !")
+        min_dist_per_vert += min_dist
     distances = np.linspace(0, max_dist - min_dist, num_dist)
     distances_reshaped = distances.reshape(1, num_dist, 1)
     img_grid = (
@@ -814,7 +887,7 @@ def compute_2d_orientation(mode, img, sampling_box_size, onlytheta=False, debug=
 # 2D+ ORIENTATION & NEMATIC ANALYSIS MODULES #
 ##############################################
 
-def tan_proj(neighbors_coords, central_normal):
+def old_tan_proj(neighbors_coords, central_normal):
     print(f">> Locally flattening coords ...")
     if isinstance(neighbors_coords, list):
         local_2d_coords_list = []
@@ -859,6 +932,37 @@ def tan_proj(neighbors_coords, central_normal):
         return local_2d_coordinates, tangent_x_axes, tangent_y_axes
 
 
+def tan_proj(neighbors_coords, mesh, vertex_indices):
+    print(f">> Locally flattening coords ...")
+
+    tan_x_global, tan_y_global = create_tangential_basis(mesh=mesh)
+
+    tangent_x_axes = tan_x_global[vertex_indices]
+    tangent_y_axes = tan_y_global[vertex_indices]
+
+    if isinstance(neighbors_coords, list):
+        local_2d_coords_list = []
+        for i, coords in enumerate(neighbors_coords):
+            central_coord = coords[0]
+            t_x = tangent_x_axes[i]
+            t_y = tangent_y_axes[i]
+
+            translated_points = coords - central_coord
+            local_x = translated_points @ t_x
+            local_y = translated_points @ t_y
+            local_2d_coords_list.append(np.stack((local_x, local_y), axis=-1))
+
+        return local_2d_coords_list, tangent_x_axes, tangent_y_axes
+
+    else:
+        central_coord = neighbors_coords[:, 0, :]
+        translated_points = neighbors_coords - central_coord[:, np.newaxis, :]
+        local_x = np.einsum('nij,nj->ni', translated_points, tangent_x_axes)
+        local_y = np.einsum('nij,nj->ni', translated_points, tangent_y_axes)
+        local_2d_coordinates = np.stack((local_x, local_y), axis=-1)
+        return local_2d_coordinates, tangent_x_axes, tangent_y_axes
+
+
 def tan_interp_batch(coords, intensities, grid_size):
     if isinstance(coords, list):
         batch_size = len(coords)
@@ -886,7 +990,7 @@ def tan_interp_batch(coords, intensities, grid_size):
 
 
 def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, unit, debug=False, debug_idx=None,
-                         debug_line_length=5):
+                         debug_line_length=5, debug_path=""):
     dir_vec = np.zeros(shape=(len(tan_x), 3))
     theta_all = compute_2d_orientation(mode="fiber", img=big_grid, sampling_box_size=box_size, onlytheta=True) * -1
 
@@ -900,9 +1004,10 @@ def batch_2d_orientation(big_grid, box_size, vertices, tan_x, tan_y, unit, debug
             np.linspace(0, 1, debug_grid_z.shape[1]),
             indexing="ij"
         )
-        plot_interp_grid(grid_x, grid_y, debug_grid_z, theta=theta_center, linelength=debug_line_length)
+        plot_interp_grid(grid_x, grid_y, debug_grid_z, theta=theta_center, linelength=debug_line_length,
+                         savefig=os.path.join(debug_path, f"patch_idx={debug_idx}.png"))
         plot_matrix(theta_all, title="Theta", colorbar=True, origin="lower", cmap_limits=[-90, 90],
-                    remove_axes=True, unit=unit)
+                    remove_axes=True, unit=unit, savefig=os.path.join(debug_path, f"theta_idx={debug_idx}.png"))
     else:
         theta_mid_idx = theta_all.shape[1] // 2
         center_indices = theta_mid_idx + np.arange(0, len(theta_all), theta_all.shape[1])
@@ -1081,7 +1186,7 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
         return m_charge, calc_charge_loop_idxs, m_line_charge, m_gauss_contribution
 
 
-def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
+def inter_layer_order(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
                       director_name_prefix="directors-avg_2dcurved_"):
     print(f"Loading layer 1 {layer_name_1}...")
     resdata_dir_layer_1 = os.path.join(resdata_dir, layer_name_1)
@@ -1118,20 +1223,19 @@ def layers_crisscross(layer_name_1, layer_name_2, patch_label_1, patch_label_2, 
     S_2dcurv_interlayer, n_avg_2dcurv_interlayer = avg_tan_nem_tens(t1_cov=joint_tan_x, t2_cov=joint_tan_y,
                                                                     directors=joint_directors_2dcurved_avg,
                                                                     neigh_idxs=joint_neigh_idxs)
-    crisscross_mag = 1 - S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)]
-    return crisscross_mag, directors_2dcurved_avg_1, directors_2dcurved_avg_2
+    return S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)], directors_2dcurved_avg_1, directors_2dcurved_avg_2
 
 
 def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
-                                 defect_idxs_calc, m_charge, patch_type, patch_size,
+                                 defect_idxs_calc, m_charge, patch_type, patch_size, pol_figs_path,
                                  show_profile=False, hidefig=True):
     pol_positions, pol_vectors, pol_idxs = [], [], []
     directors_v = directors[:, 3:6]
     directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
 
     for d_idx, charge in zip(defect_idxs_calc, m_charge):
-        s = np.round(charge * 2) / 2
-        if not (abs(s) == 0.5):
+        charge_rounded = np.round(charge * 2) / 2
+        if not (abs(charge_rounded) == 0.5):
             continue
 
         core_idx_sel = idxs_sel[d_idx]
@@ -1168,13 +1272,12 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         d_proj_y = neigh_dirs @ t2
         theta_dir = np.arctan2(d_proj_y, d_proj_x)
 
-        # Calculation: Z = mean( exp( i * (2*theta - 2*s*phi) ) )
-        Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * s * phi_spatial)))
+        Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * charge_rounded * phi_spatial)))
         phi_0 = np.angle(Z) / 2
 
         current_pols_3d = []
 
-        if s > 0:  # +1/2 Comet
+        if charge_rounded > 0:  # +1/2 Comet
             alpha = 2 * phi_0
             pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
             current_pols_3d.append(pol)
@@ -1191,21 +1294,22 @@ def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
         if show_profile:
             fig, ax = plt.subplots(figsize=(5, 5))
             ax.set_aspect('equal')
-            ax.set_title(f"Defect {d_idx}, s={s}")
+            ax.set_title(f"Defect #{d_idx}, m={charge_rounded}")
 
             x_2d = rel_pos @ t1
             y_2d = rel_pos @ t2
             scale = 0.15 * patch_size
 
             ax.quiver(x_2d, y_2d, d_proj_x * scale, d_proj_y * scale,
-                      color='blue', alpha=0.3)
+                      color='blue', alpha=0.3, headwidth=0, headlength=0, headaxislength=0)
 
             for p in current_pols_3d:
                 p2d = [p @ t1, p @ t2]
                 ax.quiver(0, 0, p2d[0] * scale * 3, p2d[1] * scale * 3,
-                          color='red', width=0.02, pivot='tail')
+                          color='red', width=0.01, pivot='tail', angles='xy', scale_units='xy', scale=1)
 
             ax.scatter(0, 0, color='k', marker='x')
+            plt.savefig(os.path.join(pol_figs_path, f"defect_{d_idx}.png"), bbox_inches='tight', dpi=300)
             if not hidefig:
                 plt.show()
             else:

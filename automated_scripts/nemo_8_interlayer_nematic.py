@@ -1,6 +1,6 @@
 """
 Batch Analysis Script for NEMO, the Nematics & Morphology Toolkit.
-Purpose: Analyse criss-cross strength
+Purpose: Analyse inter-layer nematic order
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from module_scripts.analysis import (
     load_img_scaling,
-    layers_crisscross,
+    inter_layer_order,
     spherical_project,
     spherical_project_vectors
 )
@@ -26,17 +26,11 @@ from module_scripts.visuals import (
 )
 # Import Python essentials
 import numpy as np
-import argparse
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    return parser.parse_args()
 
 
 def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2, patch_label_2, show_figures=True,
          render=False):
-    print(f">> Attempting to analysing criss cross order between {layer_name_1} and {layer_name_2}!")
+    print(f">> Attempting to analyse the order between {layer_name_1} and {layer_name_2}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
         return None
@@ -60,27 +54,27 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         print(f"[!] Mesh {layer_mesh_1} and/or {layer_mesh_2} are not available!")
         return None
 
-    crisscross_mag, field_1, field_2 = layers_crisscross(layer_name_1=layer_name_1,
-                                                         patch_label_1=patch_label_1,
-                                                         layer_name_2=layer_name_2,
-                                                         patch_label_2=patch_label_2,
-                                                         resdata_dir=resdata_dir,
-                                                         director_name_prefix="directors-avg_2dcurved_")
-    save_array(crisscross_mag,
-               f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_crisscross_mag",
+    inter_layer_s, field_1, field_2 = inter_layer_order(layer_name_1=layer_name_1,
+                                                        patch_label_1=patch_label_1,
+                                                        layer_name_2=layer_name_2,
+                                                        patch_label_2=patch_label_2,
+                                                        resdata_dir=resdata_dir,
+                                                        director_name_prefix="directors-avg_2dcurved_")
+    save_array(inter_layer_s,
+               f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_interlayer_order",
                header="strength", folderpath=resdata_dir)
 
-    plot_hist(crisscross_mag, title="Criss-Cross Strength", xlim=[0, 1],
+    plot_hist(inter_layer_s, title=r"Inter-Layer Nematic Order $S$", xlim=[0, 1],
               savefig=os.path.join(resfig_dir,
-                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_crisscross_mag.png"),
+                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_inter_layer_s.png"),
               hidefig=hidefig)
 
     plot_dir_field(directors=field_1, veclength=10, view_init=(20, 0),
-                   veccolor=crisscross_mag,
-                   cmap_label="Criss-Cross Strength", show_axes=False, manual_vminmax=[0, 1],
-                   cmap="coolwarm",
+                   veccolor=inter_layer_s,
+                   cmap_label=r"Inter-Layer Nematic Order $S$", show_axes=False, manual_vminmax=[0, 1],
+                   cmap="Spectral",
                    savefig=os.path.join(resfig_dir,
-                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.png"),
+                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_s.png"),
                    hidefig=hidefig)
     plotted_vecfields = np.concatenate((field_2, field_1), axis=0)
     try:
@@ -90,11 +84,11 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
                                   cmap="Greys", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
                                   vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
-                                  veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0),
-                                  vec_manual_vminmax=[0, 1], vec_cmap="coolwarm",
-                                  vec_cmap_label="criss cross magnitude",
+                                  veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, inter_layer_s), axis=0),
+                                  vec_manual_vminmax=[0, 1], vec_cmap="Spectral",
+                                  vec_cmap_label=r"Inter-Layer Nematic Order $S$",
                                   savefig=os.path.join(resfig_dir,
-                                                       f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_crisscross_mag.png"),
+                                                       f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_s.png"),
                                   hidefig=hidefig)
     except Exception as e:
         print(f"Encountered error during spherical projection: {e}")
@@ -117,9 +111,9 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         mask = np.ones(plotted_vecfields.shape[0], dtype=bool)
         view_colored_mesh_dir_field(mesh=layer_mesh_1, directors=plotted_vecfields[mask],
                                     vec_colors=color_scalar(
-                                        np.concatenate((np.ones(len(field_2)) * 0.5, crisscross_mag), axis=0)[
+                                        np.concatenate((np.ones(len(field_2)) * 0.5, inter_layer_s), axis=0)[
                                             mask],
-                                        manual_vminmax=[0, 1], cmap="coolwarm", ),
+                                        manual_vminmax=[0, 1], cmap="Spectral", ),
                                     mesh_vert_colors="black",
                                     vec_edge_width=0.5, vec_length=10)
 
@@ -133,4 +127,4 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
                                         (proj_layer_1, proj_layer_2)), normalise=True,
                                         cmap="Greys_r"),
                                     vec_edge_width=0.3, vec_length=20)
-    return layer_mesh_1, layer_mesh_2, proj_layer_1, proj_layer_2, field_1, field_2, plotted_vecfields, s_2dcurv_layer_1, s_2dcurv_layer_2, crisscross_mag
+    return layer_mesh_1, layer_mesh_2, proj_layer_1, proj_layer_2, field_1, field_2, plotted_vecfields, s_2dcurv_layer_1, s_2dcurv_layer_2, inter_layer_s

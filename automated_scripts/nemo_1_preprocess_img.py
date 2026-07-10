@@ -46,10 +46,12 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
 
     # ==== Yen threshold image if no custom value is given ====
     if img_thresh_val is None:
-        img_thresh_val = np.min(
-            [yen_thresh(img_blur[img_dim[0] // 2, :, :]),
-             yen_thresh(img_blur[:, img_dim[1] // 2, :]),
-             yen_thresh(img_blur[:, :, img_dim[2] // 2])])
+        mid_z, mid_y, mid_x = (dim // 2 for dim in img_dim[:3])
+        img_thresh_val = min(
+            yen_thresh(img_blur[mid_z, :, :]),
+            yen_thresh(img_blur[:, mid_y, :]),
+            yen_thresh(img_blur[:, :, mid_x])
+        )
 
     # ==== Binarise image using threshold ====
     img_thresh = thresh_img(img_blur, img_thresh_val)
@@ -60,10 +62,10 @@ def main(img_path, t_select, c_select, img_blur_val, img_thresh_val, show_figure
     plot_img(img=img_raw, scale=img_scale, unit=img_unit,
              savefig=os.path.join(resfig_dir, "sliced_thresh_maxproj.png"),
              cmap="inferno_r", thresh_mask=img_thresh, hidefig=hidefig, max_proj=True)
-    # save_tiff(img_blur, filepath=os.path.join(resfig_dir, "img_blurred.tiff"), img_unit=img_unit, img_scale=img_scale)
+
     save_tiff(img_thresh, filepath=os.path.join(resfig_dir, "img_thresholded.tiff"), img_unit=img_unit,
-              img_scale=img_scale)
-    save_array(np.column_stack(([img_blur_val], [img_thresh_val])), name="blur_thresh_parameters",
+              img_scale=img_scale, scalar_type=np.uint8)
+    save_array(np.array([[img_blur_val, img_thresh_val]]), name="blur_thresh_parameters",
                header="blur,thresh", folderpath=resdata_dir)
     # ==== 3D Render Images ====
     if render:

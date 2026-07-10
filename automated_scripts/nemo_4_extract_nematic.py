@@ -33,16 +33,10 @@ from module_scripts.visuals import (
 
 # Import Python essentials
 import numpy as np
-import argparse
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    return parser.parse_args()
 
 
 def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, normal_validity_k,
-         normal_validity_thresh, compute_num, grid_n_2dcurve_analysis, debug_2dcurve_analysis, show_figures=True,
+         normal_validity_thresh, compute_num, grid_n_2dcurve_analysis, debug_2dcurve_analysis=False, show_figures=True,
          render=False):
     print(f">> Attempting to analysing projected layer {layer_label} image {img_path}!")
     if not os.path.exists(img_path):
@@ -105,11 +99,10 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
     save_array(idxs_sel, "calcindeces", header="idx", folderpath=resdata_dir_layer)
     np.savez_compressed(os.path.join(resdata_dir_layer, "extraction_idxs_neigh.npz"),
                         idxs_neigh=np.asarray(idxs_neigh, dtype=object))
+
     # ==== Create the tangential bases ====
     neighbors_coords = [layer_mesh.vertices[patch] for patch in idxs_neigh]
-    central_normals = layer_mesh.vertex_normals[idxs_sel]
-
-    tan_cords, tan_x, tan_y = tan_proj(neighbors_coords, central_normals)
+    tan_cords, tan_x, tan_y = tan_proj(neighbors_coords=neighbors_coords, mesh=layer_mesh, vertex_indices=idxs_sel)
 
     # ==== Save the tangential bases ====
     save_array(tan_x, "tan_x", header="t1x,t1y,t1z", folderpath=resdata_dir_layer)
@@ -144,7 +137,7 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
         tan_x=tan_x, tan_y=tan_y,
         debug=debug_2dcurve_analysis,
         debug_idx=debug_vert_idx,
-        debug_line_length=1, unit=img_unit
+        debug_line_length=1, unit=img_unit, debug_path=resfig_dir_layer
     )
 
     if not debug_2dcurve_analysis:
@@ -157,7 +150,9 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
                        savefig=os.path.join(resfig_dir_layer, "directors_2dcurved.png"), veclength=10,
                        hidefig=hidefig)
     else:
-        print(f"This was a debug run, not saving results...")
+        print(f"This was a debug run...")
+        save_array(directors_2dcurved, f"debug-idx={debug_vert_idx}_directors_2dcurved", header="x,y,z,vx,vy,vz",
+                   folderpath=resdata_dir_layer)
         return None
     try:
         sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
@@ -191,8 +186,8 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
                                                                   cmap="Greys_r"), vec_length=15,
                                     vec_edge_width=0.5)
 
-    save_array(np.column_stack(
-        ([patch_size], [normal_validity_k], [normal_validity_thresh], [compute_num], [grid_n_2dcurve_analysis])),
+    save_array(
+        np.array([[patch_size, normal_validity_k, normal_validity_thresh, compute_num, grid_n_2dcurve_analysis]]),
         name=f"{patch_label}_nematic-extraction_parameters",
         header=f"{patch_mode},normal_validity_k,normal_validity_thresh,compute_num,grid_n_2dcurve_analysis",
         folderpath=resdata_dir_layer)

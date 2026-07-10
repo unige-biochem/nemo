@@ -53,9 +53,8 @@ def color_scalar(scalar, cmap="Spectral", normalise=False, manual_vminmax=None):
 
 
 def create_figdir(directory):
-    if not os.path.exists(directory):
-        print(f">> Creating directory {directory} ...")
-        os.makedirs(directory)
+    # print(f">> Creating directory {directory} ...")
+    os.makedirs(directory, exist_ok=True)
 
 
 #######################
@@ -69,7 +68,7 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(8.5, 2.5),
              show_mesh_normals=False, mesh_interval=5, normal_scale=0.05, normal_interval=50,
              cmap_label="Fluorescence Intensity (a.u.)", title_digit_precision=2,
              manual_vminvmax=None, savefig="", hidefig=False,
-             show_scalebar=True, scalebar_fontsize=8, slice_line_color="white"):
+             show_scalebar=True, scalebar_fontsize=5, slice_line_color="white"):
     print(f">> Plotting {'Max Projections' if max_proj else 'Slices'} ...")
     if z_i is None: z_i = img.shape[0] // 2
     if y_i is None: y_i = img.shape[1] // 2
@@ -114,6 +113,12 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(8.5, 2.5),
 
         for i, mesh in enumerate(meshes):
             pts = mesh.vertices.copy()
+            c_i = mesh_colors[i]
+
+            def get_c(mask, idx, color_data):
+                if isinstance(color_data, np.ndarray) and len(color_data) == len(pts):
+                    return color_data[mask][idx]
+                return color_data
 
             if max_proj:
                 zmask = ymask = xmask = np.ones(len(pts), dtype=bool)
@@ -123,23 +128,25 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(8.5, 2.5),
                 ymask = abs(pts[:, 1] - y_i * scale[1]) < slice_depth
                 xmask = abs(pts[:, 2] - x_i * scale[2]) < slice_depth
                 idx_z = idx_y = idx_x = slice(None)
+
             axes[0].scatter(pts[zmask, 2][idx_z] / scale[2], pts[zmask, 1][idx_z] / scale[1],
-                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+                            c=get_c(zmask, idx_z, c_i), s=mesh_thick, alpha=mesh_alpha)
             axes[1].scatter(pts[ymask, 2][idx_y] / scale[2], pts[ymask, 0][idx_y] / scale[0],
-                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+                            c=get_c(ymask, idx_y, c_i), s=mesh_thick, alpha=mesh_alpha)
             axes[2].scatter(pts[xmask, 1][idx_x] / scale[1], pts[xmask, 0][idx_x] / scale[0],
-                            c=mesh_colors[i], s=mesh_thick, alpha=mesh_alpha)
+                            c=get_c(xmask, idx_x, c_i), s=mesh_thick, alpha=mesh_alpha)
 
             if show_mesh_normals:
                 norms = mesh.vertex_normals.copy()
+                q_idx = slice(None, None, normal_interval)
 
                 for ax_idx, mask, ix, iy, sx, sy in [(0, zmask, 2, 1, scale[2], scale[1]),
                                                      (1, ymask, 2, 0, scale[2], scale[0]),
                                                      (2, xmask, 1, 0, scale[1], scale[0])]:
-                    axes[ax_idx].quiver(pts[mask, ix][::normal_interval] / sx, pts[mask, iy][::normal_interval] / sy,
-                                        norms[mask, ix][::normal_interval] / sx,
-                                        norms[mask, iy][::normal_interval] / sy,
-                                        color=mesh_colors[i], alpha=mesh_normal_alpha, scale=normal_scale,
+                    axes[ax_idx].quiver(pts[mask, ix][q_idx] / sx, pts[mask, iy][q_idx] / sy,
+                                        norms[mask, ix][q_idx] / sx,
+                                        norms[mask, iy][q_idx] / sy,
+                                        color=get_c(mask, q_idx, c_i), alpha=mesh_normal_alpha, scale=normal_scale,
                                         angles='xy', scale_units='xy')
 
     if not max_proj:
@@ -177,9 +184,9 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(8.5, 2.5),
             h, w = s_data.shape
             auto_len_px = auto_len / x_sc
             x_s = 0.98 * w - auto_len_px
-            y_b = 0.98 * h if is_up else 0.02 * h
-            ax.plot([x_s, x_s + auto_len_px], [y_b, y_b], color=scalebar_colour, lw=2.5)
-            offset = 7
+            y_b = 0.97 * h if is_up else 0.05 * h
+            ax.plot([x_s, x_s + auto_len_px], [y_b, y_b], color=scalebar_colour, lw=1.5)
+            offset = 4
             trans = offset_copy(ax.transData, fig=fig, y=offset, units='points')
             ax.text(x_s + auto_len_px / 2, y_b, f"{auto_len} {unit}",
                     transform=trans, color=scalebar_colour, fontsize=scalebar_fontsize,
@@ -190,6 +197,7 @@ def plot_img(img, scale, unit, x_i=None, y_i=None, z_i=None, figsize=(8.5, 2.5),
     cbar.set_label(cmap_label)
 
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
     if not hidefig:
@@ -247,6 +255,7 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, interp_grid_n=10
     cbar.set_label(cmap_label)
 
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
@@ -256,17 +265,18 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, interp_grid_n=10
 
 
 def plot_hist(array, ylabel="Frequency", title="", figsize=(3.5, 2.8), xlim=None, savefig="", dpi=300, density=True,
-              bins=None, hidefig=False):
+              bins=None, hidefig=False, align="mid"):
     plt.figure(figsize=figsize)
     plt.title(title)
     if bins is not None:
-        plt.hist(array, density=density, bins=bins)
+        plt.hist(array, density=density, bins=bins, align=align)
     else:
-        plt.hist(array, density=density)
+        plt.hist(array, density=density, align=align)
     if xlim is not None:
         plt.xlim(xlim[0], xlim[1])
     plt.ylabel(ylabel)
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
@@ -300,6 +310,7 @@ def plot_matrix(matrix, unit, colorbar=False, cmap="twilight", figsize=(3.5, 2.8
         ax.set_yticks(np.linspace(0, matrix.shape[0], 5))
         ax.set_yticklabels(np.round(ax.get_yticks() * scale[1], 2))
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
     if not hidefig:
@@ -318,7 +329,7 @@ def plot_spherical_projection(phi, theta, intensities,
                               invert_y_axis=False,
                               cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=300,
                               hidefig=False, marker_idxs=None, marker_color="yellow",
-                              marker_size=500, marker_alpha=0.9, marker_vec=None, marker_vec_scale=20,
+                              marker_size=200, marker_alpha=0.9, marker_vec=None, marker_vec_scale=20,
                               marker_vec_width=0.005, marker_vec_color="red"):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
@@ -379,6 +390,7 @@ def plot_spherical_projection(phi, theta, intensities,
                      cax=cax_vec, label=vec_cmap_label)
 
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
@@ -387,7 +399,8 @@ def plot_spherical_projection(phi, theta, intensities,
         plt.close()
 
 
-def plot_interp_grid(grid_x, grid_y, grid_z, theta=None, linelength=2, figsize=(3.5, 2.8), hidefig=False):
+def plot_interp_grid(grid_x, grid_y, grid_z, theta=None, linelength=2, figsize=(3.5, 2.8), hidefig=False, savefig="",
+                     dpi=300):
     fig, ax = plt.subplots(figsize=figsize)
     contour = ax.contourf(grid_x, grid_y, grid_z, levels=100, cmap='Greys_r')
     if theta is not None:
@@ -404,10 +417,14 @@ def plot_interp_grid(grid_x, grid_y, grid_z, theta=None, linelength=2, figsize=(
     ax.set_title('Interpolated Neighborhood')
     fig.colorbar(contour, ax=ax, orientation='vertical', label='Fluorescence Intensity (a.u.)')
 
+    if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
     if not hidefig:
         plt.show()
     else:
-        plt.close(fig)
+        plt.close()
 
 
 def plot_dist_kymograph(distances, intensities, cmap, figsize, unit, savefig="", dpi=300, hidefig=False):
@@ -422,6 +439,7 @@ def plot_dist_kymograph(distances, intensities, cmap, figsize, unit, savefig="",
     axes[1].set_xlabel(f"Distance from min distance ({unit})")
     plt.tight_layout()
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
     if not hidefig:
@@ -495,6 +513,7 @@ def plot_dir_field(directors=None, t1_raw=None, t2_raw=None, normals=None, vecle
         ax.set_zlim(zlim[0], zlim[1])
     plt.tight_layout()
     if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
         plt.savefig(savefig, dpi=dpi, bbox_inches='tight')
     if not hidefig:
@@ -515,10 +534,12 @@ def initialise_viewer():
     return viewer
 
 
-def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=None):
+def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=None, gamma_list=None):
     print(">> Rendering image...")
     if opacity_list is None:
         opacity_list = np.ones(len(img_list))
+    if gamma_list is None:
+        gamma_list = np.ones(len(img_list))
     if color_list is None:
         color_list = ["green" for _ in range(len(img_list))]
     if title_list is None:
@@ -533,12 +554,14 @@ def view_img(img_list, scale, color_list=None, title_list=None, opacity_list=Non
 
     for i, img in enumerate(img_list):
         viewer.add_image(img, name=title_list[i], colormap=color_list[i], rendering="mip", scale=scale_list[i], opacity=
-        opacity_list[i])
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+        opacity_list[i], gamma=gamma_list[i])
+
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
-def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None, vec_freq=15, img=None,
+def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None, mesh_shadings=None, vec_freq=15,
+              img=None,
               img_cmap="green", scale=(1, 1, 1), vec_edge_width=None, vec_length=1, img_opacity=0.4,
               hide_vectors=True):
     print(">> Rendering mesh...")
@@ -550,13 +573,17 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
         mesh_colors = ["white" for _ in range(len(mesh_list))]
     if mesh_titles is None:
         mesh_titles = ["Mesh" for _ in range(len(mesh_list))]
+    if mesh_shadings is None:
+        mesh_shadings = ["none" for _ in range(len(mesh_list))]
+
     if mesh_opacities is None:
         mesh_opacities = [0.4 for _ in range(len(mesh_list))]
     if vec_edge_width is None:
         vec_edge_width = vec_length / 6
 
     for i, mesh in enumerate(mesh_list):
-        viewer.add_surface((mesh.vertices, mesh.faces), name=mesh_titles[i], shading='none', opacity=mesh_opacities[i],
+        viewer.add_surface((mesh.vertices, mesh.faces), name=mesh_titles[i], shading=mesh_shadings[i],
+                           opacity=mesh_opacities[i],
                            blending="translucent", colormap=mesh_colors[i])
         if not hide_vectors:
             viewer.add_vectors(
@@ -564,13 +591,13 @@ def view_mesh(mesh_list, mesh_colors=None, mesh_titles=None, mesh_opacities=None
                 edge_color=mesh_colors[i], edge_width=vec_edge_width, blending="translucent_no_depth",
                 length=vec_length, opacity=1.0, name=f"{mesh_titles[i]}_normals"
             )
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
 def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="green", blending="translucent",
                        shading="none", opacity=0.8, use_orig_color=True):
-    print(">> Rendering colored vertices...")
+    print(">> Rendering coloured vertices...")
     viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale)
@@ -581,14 +608,14 @@ def view_colored_verts(verts, colors, scale=None, img=None, ptsize=2, cmap_img="
         colors_mapped[:, 1] = colors
     viewer.add_points(verts, name='Mesh', shading=shading, opacity=opacity, blending=blending,
                       face_color=colors_mapped, border_color=colors_mapped, size=ptsize)
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
 def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity=1.0, img=None, scale=None,
                       img_opacity=1.0, cmap_img="green", color_override=None, mesh_blending="opaque", markers=None,
                       marker_colors="yellow", marker_size=5, add_hidden_vector=False):
-    print(">> Rendering colored mesh...")
+    print(">> Rendering coloured mesh...")
 
     if type(vert_colors) == str:
         vert_colors = np.tile(np.array(pltcolors.to_rgb(vert_colors)), (mesh.vertices.shape[0], 1))
@@ -612,7 +639,7 @@ def view_colored_mesh(mesh, vert_colors="red", mesh_shading="none", mesh_opacity
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     if add_hidden_vector:
         viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
@@ -620,6 +647,7 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
                                scale=None, img_opacity=1.0, cmap_img="green", color_override_list=None,
                                mesh_blending_list=None, markers=None, add_hidden_vector=False,
                                marker_colors="yellow", marker_size=5, name_list=None):
+    print(">> Rendering multiple coloured meshes...")
     if color_override_list is None:
         color_override_list = [None for _ in range(len(mesh_list))]
     if name_list is None:
@@ -630,7 +658,6 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
         mesh_opacity_list = [1.0 for _ in range(len(mesh_list))]
     if mesh_blending_list is None:
         mesh_blending_list = ["opaque" for _ in range(len(mesh_list))]
-    print(">> Rendering colored mesh...")
     viewer = initialise_viewer()
     if img is not None:
         viewer.add_image(img, name="Image", colormap=cmap_img, rendering="mip", scale=scale, opacity=img_opacity,
@@ -658,7 +685,7 @@ def view_colored_mesh_multiple(mesh_list, vert_colors_list=None, mesh_shading="n
                           face_color=marker_colors, border_color=marker_colors, size=marker_size)
     if add_hidden_vector:
         viewer.add_vectors(np.array([[[0, 0, 0], [0, 0, 1]]]), name="dummy", visible=False)
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
@@ -666,7 +693,7 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
                                   vec_length=10, vec_opacity=0.9, pts_size=1, pts_opacity=0.9, pts_blending="opaque",
                                   vector_style="line", img=None, scale=None, img_opacity=0.5, mesh=None,
                                   mesh_shading="flat", mesh_blending="opaque", centered_directors=True, vec_names=None):
-    print(">> Rendering 3D vector field...")
+    print(">> Rendering 3D vector/director field...")
     viewer = initialise_viewer()
     if img is not None and scale is not None:
         viewer.add_image(img, opacity=img_opacity, scale=scale, rendering="mip")
@@ -701,7 +728,7 @@ def view_3d_vector_field_multiple(vec_pos, vec_dir, vec_colors, verts=None, vert
             vector_style=vector_style,
             name=vec_names[i]
         )
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()
 
 
@@ -712,7 +739,7 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                                 scale=None, img_opacity=0.5, marker_vectors=None, marker_vectors_color="red",
                                 marker_vectors_length=100, marker_vector_width=2, center_vectors=True,
                                 center_marker_vector=False, marker_vectors_style="arrow"):
-    print(">> Rendering mesh and colored vertices...")
+    print(">> Rendering mesh and coloured vectors/directors...")
     vec_pos, vec_dir = directors[:, :3], directors[:, 3:]
     if type(mesh_vert_colors) == str:
         mesh_vert_colors = np.tile(np.array(pltcolors.to_rgb(mesh_vert_colors)), (mesh.vertices.shape[0], 1))
@@ -772,5 +799,5 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
             edge_color=marker_vectors_color, edge_width=marker_vector_width,
             length=marker_vectors_length, vector_style=marker_vectors_style
         )
-    viewer.dims.axis_labels = ("Z", "Y", "X")
+    viewer.dims.axis_labels = ("X (Z)", "Y (Y)", "Z (X)")
     napari.run()

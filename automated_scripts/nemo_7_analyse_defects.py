@@ -15,7 +15,7 @@ from module_scripts.analysis import (
     interpolate_on_mesh,
     coord_search_radius,
     coord_search_neighbours,
-    tan_proj,
+    create_tangential_basis,
     curved_nem_charge,
     spherical_project,
     spherical_project_vectors,
@@ -31,12 +31,6 @@ from module_scripts.visuals import (
 )
 # Import Python essentials
 import numpy as np
-import argparse
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    return parser.parse_args()
 
 
 def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge_mode, topcharge_size, topcurv_radius,
@@ -97,7 +91,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                         for lst in charge_patch_idxs
                         if np.any(idxs_sel == lst[0])]
 
-    _, tan_x_all, tan_y_all = tan_proj(layer_mesh.vertices[:, np.newaxis], layer_mesh.vertex_normals)
+    tan_x_all, tan_y_all = create_tangential_basis(mesh=layer_mesh)
     m_charge, calc_charge_loop_idxs = curved_nem_charge(mesh=layer_mesh, directors=directors_2dcurved_avg,
                                                         calc_idxs=defect_idxs_calc,
                                                         director_indeces=idxs_sel,
@@ -136,8 +130,8 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
     m_charge_extended[flat_idxs] = np.repeat(m_charge, [len(np.atleast_1d(x)) for x in charge_patch_idxs_calc])
     m_charge_extended = m_charge_extended.ravel()
 
-    plot_dir_field(directors=directors_2dcurved_avg, veclength=10, veccolor=m_charge_extended[idxs_sel],
-                   cmap="rainbow",
+    plot_dir_field(directors=directors_2dcurved_avg, veclength=5, veccolor=m_charge_extended[idxs_sel],
+                   cmap="rainbow", vec_alpha=0.5,
                    title=r"TOTAL CHARGE$\approx$" + f"{np.nansum(m_charge):.3}",
                    cmap_label="topological charge $m$",
                    manual_vminmax=[-1, 1], show_axes=False,
@@ -152,8 +146,8 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                folderpath=resdata_dir_layer)
 
     # ==== Plot result ====
-    plot_hist(m_charge, title=f"Sum(m)={np.nansum(m_charge)}",
-              savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.png"),
+    plot_hist(m_charge, title=r"$\sum_i m_i =$" + f"{np.nansum(m_charge)}", ylabel="Count", xlim=[-1.1, 1.1],
+              savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.png"), density=False,
               hidefig=hidefig)
 
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
@@ -173,9 +167,9 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
         directors=directors_2dcurved_avg,
         vertex_normals=layer_mesh.vertex_normals.copy(),
         defect_idxs_calc=defect_idxs_calc,
-        m_charge=np.round(m_charge, 2),
+        m_charge=m_charge,
         patch_type=pol_mode,
-        patch_size=pol_size, show_profile=True, hidefig=hidefig
+        patch_size=pol_size, show_profile=True, hidefig=hidefig, pol_figs_path=resfig_dir_layer,
     )
     charge_pol_linked_idxs = np.argsort(defect_idxs_calc)[
         np.searchsorted(defect_idxs_calc, pol_idxs, sorter=np.argsort(defect_idxs_calc))]
@@ -216,15 +210,13 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                                     marker_vectors_color=color_scalar(m_charge[charge_pol_linked_idxs],
                                                                       manual_vminmax=[-1, 1],
                                                                       cmap="rainbow"), )
-    save_array(np.column_stack(
-        ([topcharge_size], [topcurv_radius], [topcurv_interpk])),
-        name=f"defect-analysis-charge_parameters",
-        header=f"{topcharge_mode},topcurv_radius,topcurv_interpk",
-        folderpath=resdata_dir_layer)
+    save_array(np.array([[topcharge_size, topcurv_radius, topcurv_interpk]]),
+               name=f"defect-analysis-charge_parameters",
+               header=f"{topcharge_mode},topcurv_radius,topcurv_interpk",
+               folderpath=resdata_dir_layer)
 
-    save_array(np.column_stack(
-        ([pol_size])),
-        name=f"defect-analysis-polarisation_parameters",
-        header=f"{pol_mode}",
-        folderpath=resdata_dir_layer)
+    save_array(np.array([[pol_size]]),
+               name=f"defect-analysis-polarisation_parameters",
+               header=f"{pol_mode}",
+               folderpath=resdata_dir_layer)
     return layer_label, layer_mesh, proj_layer, directors_2dcurved_avg, s_2dcurv, defect_idxs_calc, m_charge, charge_pol_linked_idxs, pol_vecfield
