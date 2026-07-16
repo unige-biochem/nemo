@@ -29,3 +29,4 @@ dependencies:
       - orientationpy==0.2.0.4
       - napari[all]
       - pymeshlab
+      - potpourri3d

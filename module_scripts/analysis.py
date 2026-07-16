@@ -104,7 +104,6 @@ def tensprod(a, b):
     return np.tensordot(a, b, axes=2)
 
 
-#
 def old_create_tangential_basis(mesh, first_choice_axis=None, second_choice_axis=None, hide_output=True):
     normals = mesh.vertex_normals
     if first_choice_axis is None:
@@ -135,10 +134,21 @@ def create_tangential_basis(mesh):
     normal = basisN[source_vertex_idx]
 
     neighbor_indices = mesh.vertex_neighbors[source_vertex_idx]
-    edge_vector = mesh.vertices[neighbor_indices[0]] - mesh.vertices[source_vertex_idx]
+    if len(neighbor_indices) > 0:
+        print(">> Starting vector propagation from edge vector...")
+        edge_vector = mesh.vertices[neighbor_indices[0]] - mesh.vertices[source_vertex_idx]
+        tangent_3d = edge_vector - np.dot(edge_vector, normal) * normal
+    else:
+        tangent_3d = np.array([0.0, 0.0, 0.0])
 
-    tangent_3d = edge_vector - np.dot(edge_vector, normal) * normal
+    if np.linalg.norm(tangent_3d) < 1e-8:
+        print(f"[!] No valid primary vector, resorting to random tangent vector...")
+        fallback_vec = np.array([1.0, 0.0, 0.0])
+        if np.abs(np.dot(fallback_vec, normal)) > 0.99:
+            fallback_vec = np.array([0.0, 1.0, 0.0])
+        tangent_3d = fallback_vec - np.dot(fallback_vec, normal) * normal
     tangent_3d = tangent_3d / np.linalg.norm(tangent_3d)
+
     vec_2d = [np.dot(tangent_3d, basisX[source_vertex_idx]),
               np.dot(tangent_3d, basisY[source_vertex_idx])]
 
@@ -150,7 +160,7 @@ def create_tangential_basis(mesh):
     tan_y = np.cross(basisN, tan_x)
     tan_y = tan_y / np.linalg.norm(tan_y, axis=1, keepdims=True)
 
-    if np.sum(np.isnan(tan_x)) > 0 or np.sum(np.isnan(tan_y)) > 0:
+    if np.isnan(tan_x).any() or np.isnan(tan_y).any():
         print(f"[!] Nans detected in tangent vector propagation, resorting to old algorithm...")
         tan_x, tan_y = old_create_tangential_basis(mesh=mesh)
     return tan_x, tan_y
