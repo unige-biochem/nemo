@@ -18,7 +18,8 @@ from module_scripts.analysis import (
     create_tangential_basis,
     curved_nem_charge,
     spherical_project,
-    spherical_project_vectors
+    spherical_project_vectors,
+    compute_defect_polarisations
 )
 from module_scripts.datahandler import create_resdirs, load_array, load_mesh, save_array
 from module_scripts.visuals import (
@@ -33,7 +34,7 @@ import numpy as np
 
 
 def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge_mode, topcharge_size, topcurv_radius,
-         topcurv_interpk, show_figures=True, render=False):
+         topcurv_interpk, pol_mode, pol_size, show_figures=True, render=False):
     print(f">> Attempting to analysing the tangential field on projected layer {layer_label} image {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
@@ -160,6 +161,42 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                               marker_idxs=idxs_sel[defect_idxs_calc],
                               marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"))
 
+    pol_vecfield, pol_idxs = compute_defect_polarisations(
+        mesh=layer_mesh,
+        idxs_sel=idxs_sel,
+        directors=directors_2dcurved_avg,
+        vertex_normals=layer_mesh.vertex_normals.copy(),
+        defect_idxs_calc=defect_idxs_calc,
+        m_charge=m_charge,
+        patch_type=pol_mode,
+        patch_size=pol_size, show_profile=True, hidefig=hidefig, pol_figs_path=resfig_dir_layer,
+    )
+    charge_pol_linked_idxs = np.argsort(defect_idxs_calc)[
+        np.searchsorted(defect_idxs_calc, pol_idxs, sorter=np.argsort(defect_idxs_calc))]
+
+    save_array(pol_vecfield, name=f"def-pol_2dcurved", header="x,y,z,vx,vy,vz",
+               folderpath=resdata_dir_layer)
+    save_array(charge_pol_linked_idxs, name=f"def-pol_2dcurved_idxs_expanded", header="idx",
+               folderpath=resdata_dir_layer)
+    save_array(pol_idxs, name=f"def-pol_2dcurved_idxs", header="idx", folderpath=resdata_dir_layer)
+    try:
+        sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+        vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
+                                                               directors_2dcurved_avg[:, 3:])
+        pol_dir_phi, pol_dir_theta = spherical_project_vectors(pol_vecfield[:, :3], pol_vecfield[:, 3:])
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+                                  vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
+                                  vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
+                                  vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",
+                                  savefig=os.path.join(resfig_dir_layer, f"defect-polarisations.png"), hidefig=hidefig,
+                                  marker_idxs=idxs_sel[defect_idxs_calc],
+                                  marker_color=color_scalar(m_charge, manual_vminmax=[-1, 1], cmap="rainbow"),
+                                  marker_vec=(pol_dir_phi, pol_dir_theta, idxs_sel[pol_idxs]),
+                                  marker_vec_color=color_scalar(m_charge[charge_pol_linked_idxs],
+                                                                manual_vminmax=[-1, 1],
+                                                                cmap="rainbow"))
+    except Exception as e:
+        print(f"Encountered error during spherical projection: {e}")
     if render:
         view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg, mesh_shading="flat",
                                     mesh_vert_colors=color_scalar(proj_layer, normalise=True,
@@ -167,10 +204,19 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                                     vec_colors=color_scalar(s_2dcurv, manual_vminmax=[0, 1]),
                                     markers=layer_mesh.vertices[idxs_sel[defect_idxs_calc]], vec_edge_width=0.3,
                                     marker_colors=color_scalar(m_charge, manual_vminmax=[-1, 1],
-                                                               cmap="rainbow"), marker_size=400, vec_length=10)
+                                                               cmap="rainbow"), marker_size=400,
+                                    marker_vectors=pol_vecfield, marker_vectors_length=20, vec_length=10,
+                                    marker_vector_width=3,
+                                    marker_vectors_color=color_scalar(m_charge[charge_pol_linked_idxs],
+                                                                      manual_vminmax=[-1, 1],
+                                                                      cmap="rainbow"), )
     save_array(np.array([[topcharge_size, topcurv_radius, topcurv_interpk]]),
                name=f"defect-analysis-charge_parameters",
                header=f"{topcharge_mode},topcurv_radius,topcurv_interpk",
                folderpath=resdata_dir_layer)
 
-    return layer_label, layer_mesh, proj_layer, directors_2dcurved_avg, s_2dcurv, defect_idxs_calc, m_charge
+    save_array(np.array([[pol_size]]),
+               name=f"defect-analysis-polarisation_parameters",
+               header=f"{pol_mode}",
+               folderpath=resdata_dir_layer)
+    return layer_label, layer_mesh, proj_layer, directors_2dcurved_avg, s_2dcurv, defect_idxs_calc, m_charge, charge_pol_linked_idxs, pol_vecfield

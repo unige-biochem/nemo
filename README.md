@@ -105,7 +105,7 @@ jupyter lab
 - The primary interface for interactive analysis is the **`MAIN.ipynb`**. You can open it using Jupyter:
 
 ```bash
-jupyter notebook manuscript_simulated.ipynb
+jupyter notebook MAIN.ipynb
 ```
 
 ---

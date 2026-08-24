@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from module_scripts.analysis import (
     load_img_scaling,
-    inter_layer_order,
+    inter_layer_alignment,
     spherical_project,
     spherical_project_vectors
 )
@@ -54,27 +54,28 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         print(f"[!] Mesh {layer_mesh_1} and/or {layer_mesh_2} are not available!")
         return None
 
-    inter_layer_s, field_1, field_2 = inter_layer_order(layer_name_1=layer_name_1,
-                                                        patch_label_1=patch_label_1,
-                                                        layer_name_2=layer_name_2,
-                                                        patch_label_2=patch_label_2,
-                                                        resdata_dir=resdata_dir,
-                                                        director_name_prefix="directors-avg_2dcurved_")
-    save_array(inter_layer_s,
+    inter_layer_c, field_1, field_2 = inter_layer_alignment(layer_name_1=layer_name_1,
+                                                            patch_label_1=patch_label_1,
+                                                            layer_name_2=layer_name_2,
+                                                            patch_label_2=patch_label_2,
+                                                            resdata_dir=resdata_dir,
+                                                            director_name_prefix="directors-avg_2dcurved_")
+    save_array(inter_layer_c,
                f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_interlayer_order",
                header="strength", folderpath=resdata_dir)
 
-    plot_hist(inter_layer_s, title=r"Inter-Layer Nematic Order $S$", xlim=[0, 1],
+    plot_hist(inter_layer_c, xlim=[-1, 1], density=True, xlabel=r"Inter-layer alignment $c$",
+              ylabel="Probability density",
               savefig=os.path.join(resfig_dir,
-                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_inter_layer_s.png"),
+                                   f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_inter_layer_c.png"),
               hidefig=hidefig)
 
     plot_dir_field(directors=field_1, veclength=10, view_init=(20, 0),
-                   veccolor=inter_layer_s,
-                   cmap_label=r"Inter-Layer Nematic Order $S$", show_axes=False, manual_vminmax=[0, 1],
-                   cmap="Spectral",
+                   veccolor=inter_layer_c,
+                   cmap_label=r"Inter-Layer Nematic Order $S$", show_axes=False, manual_vminmax=[-1, 1],
+                   cmap="bwr_r",
                    savefig=os.path.join(resfig_dir,
-                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_s.png"),
+                                        f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_c.png"),
                    hidefig=hidefig)
     plotted_vecfields = np.concatenate((field_2, field_1), axis=0)
     try:
@@ -84,11 +85,11 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
         plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=np.ones_like(sph_proj_phi),
                                   cmap="Greys", vec_pos_phi=sph_proj_phi, vec_pos_theta=sph_proj_theta,
                                   vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta,
-                                  veccolor=np.concatenate((np.ones(len(field_2)) * 0.5, inter_layer_s), axis=0),
-                                  vec_manual_vminmax=[0, 1], vec_cmap="Spectral",
+                                  veccolor=np.concatenate((np.ones(len(field_2)) * 0.0, inter_layer_c), axis=0),
+                                  vec_manual_vminmax=[-1, 1], vec_cmap="bwr_r",
                                   vec_cmap_label=r"Inter-Layer Nematic Order $S$",
                                   savefig=os.path.join(resfig_dir,
-                                                       f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_s.png"),
+                                                       f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_nematic-field_inter_layer_c.png"),
                                   hidefig=hidefig)
     except Exception as e:
         print(f"Encountered error during spherical projection: {e}")
@@ -101,21 +102,14 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
     s_2dcurv_layer_2 = load_array(name=f"S-order_2dcurved_{patch_label_2}",
                                   folderpath=os.path.join(resdata_dir, layer_name_2))
     if render:
-        import trimesh
         view_colored_mesh_multiple(mesh_list=[layer_mesh_1, layer_mesh_2],
                                    vert_colors_list=[
                                        color_scalar(proj_layer_1, normalise=True,
-                                                    cmap="Greens_r"),
+                                                    cmap="Purples_r"),
                                        color_scalar(proj_layer_2, normalise=True,
-                                                    cmap="Blues_r")])
-        mask = np.ones(plotted_vecfields.shape[0], dtype=bool)
-        view_colored_mesh_dir_field(mesh=layer_mesh_1, directors=plotted_vecfields[mask],
-                                    vec_colors=color_scalar(
-                                        np.concatenate((np.ones(len(field_2)) * 0.5, inter_layer_s), axis=0)[
-                                            mask],
-                                        manual_vminmax=[0, 1], cmap="Spectral", ),
-                                    mesh_vert_colors="black",
-                                    vec_edge_width=0.5, vec_length=10)
+                                                    cmap="Reds_r")])
+
+        import trimesh
 
         view_colored_mesh_dir_field(mesh=trimesh.util.concatenate(layer_mesh_1, layer_mesh_2),
                                     directors=plotted_vecfields,
@@ -126,5 +120,12 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
                                     mesh_vert_colors=color_scalar(np.concatenate(
                                         (proj_layer_1, proj_layer_2)), normalise=True,
                                         cmap="Greys_r"),
-                                    vec_edge_width=0.3, vec_length=20)
-    return layer_mesh_1, layer_mesh_2, proj_layer_1, proj_layer_2, field_1, field_2, plotted_vecfields, s_2dcurv_layer_1, s_2dcurv_layer_2, inter_layer_s
+                                    vec_edge_width=0.2, vec_length=7)
+        view_colored_mesh_dir_field(mesh=layer_mesh_1, directors=plotted_vecfields,
+                                    vec_colors=np.concatenate((["white"] * len(field_2),
+                                                               color_scalar(inter_layer_c,
+                                                                            manual_vminmax=[-1, 1],
+                                                                            cmap="bwr_r")), axis=0),
+                                    mesh_vert_colors="black",
+                                    vec_edge_width=0.3, vec_length=7)
+    return layer_mesh_1, layer_mesh_2, proj_layer_1, proj_layer_2, field_1, field_2, plotted_vecfields, s_2dcurv_layer_1, s_2dcurv_layer_2, inter_layer_c

@@ -17,13 +17,25 @@ from matplotlib.colors import Normalize
 import matplotlib.tri as tri
 from matplotlib.transforms import offset_copy
 
-plt.style.use('ggplot')
+plt.style.use("default")
+font_size = 10.0
 plt.rcParams.update({
-    "axes.grid": True,
-    "grid.linestyle": "--",
-    "grid.color": "white",
-    "grid.linewidth": 0.8,
-    "grid.alpha": 0.7
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial"],
+    "font.size": font_size,
+    "axes.labelsize": font_size,
+    "axes.titlesize": font_size,
+    "xtick.labelsize": font_size,
+    "ytick.labelsize": font_size,
+    "legend.fontsize": font_size,
+    "axes.grid": False,
+    "axes.facecolor": "white",
+    "axes.edgecolor": "black",
+    "axes.linewidth": 0.5,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "xtick.direction": "out",
+    "ytick.direction": "out"
 })
 
 
@@ -264,16 +276,22 @@ def plot_maxproj_pts(verts, unit, cmap="Spectral", colors=None, interp_grid_n=10
         plt.close()
 
 
-def plot_hist(array, ylabel="Frequency", title="", figsize=(3.5, 2.8), xlim=None, savefig="", dpi=300, density=True,
-              bins=None, hidefig=False, align="mid"):
+def plot_hist(array, ylabel="Frequency", title="", xlabel="", figsize=(3.5, 2.8), xlim=None, savefig="", dpi=300,
+              density=True, bins=None, hidefig=False):
     plt.figure(figsize=figsize)
     plt.title(title)
+    hist_kwargs = {
+        "density": density,
+        "align": "mid",
+        "color": "black",
+        "rwidth": 0.92,
+    }
     if bins is not None:
-        plt.hist(array, density=density, bins=bins, align=align)
-    else:
-        plt.hist(array, density=density, align=align)
+        hist_kwargs["bins"] = bins
+    plt.hist(array, **hist_kwargs)
     if xlim is not None:
         plt.xlim(xlim[0], xlim[1])
+    plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     if savefig != "":
         print(f">> Saving figure to {savefig} ...")
@@ -330,7 +348,8 @@ def plot_spherical_projection(phi, theta, intensities,
                               cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=300,
                               hidefig=False, marker_idxs=None, marker_color="yellow",
                               marker_size=200, marker_alpha=0.9, marker_vec=None, marker_vec_scale=20,
-                              marker_vec_width=0.005, marker_vec_color="red"):
+                              marker_vec_width=0.005, marker_vec_color="red", xlabel="Phi (deg)", ylabel="Theta (deg)",
+                              disable_all_colorbars=False, ):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax
 
@@ -342,7 +361,7 @@ def plot_spherical_projection(phi, theta, intensities,
         vec_norm = None
 
     fig = plt.figure(figsize=figsize)
-    ax = fig.add_axes([0.05, 0.1, 0.75, 0.8])
+    ax = fig.add_axes([0.10, 0.15, 0.50, 0.70])
 
     if hexview:
         triang = tri.Triangulation(phi, theta)
@@ -366,7 +385,7 @@ def plot_spherical_projection(phi, theta, intensities,
 
     if marker_idxs is not None:
         m_c = marker_color if isinstance(marker_color, str) else marker_color
-        ax.scatter(phi[marker_idxs], theta[marker_idxs], c=m_c, s=marker_size, alpha=marker_alpha)
+        ax.scatter(phi[marker_idxs], theta[marker_idxs], c=m_c, s=marker_size, alpha=marker_alpha, edgecolors='none')
 
         if marker_vec is not None:
             mv_phi, mv_theta, mv_idxs = marker_vec
@@ -378,16 +397,19 @@ def plot_spherical_projection(phi, theta, intensities,
         ax.invert_yaxis()
 
     ax.set_aspect("equal")
-    ax.set_xlabel("Phi (deg)")
-    ax.set_ylabel("Theta (deg)")
-    cax_int = fig.add_axes([0.75, 0.1, 0.03, 0.8])
-    fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
-                 cax=cax_int, label=cmap_label)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_xlim(-180.0, 180.0)
+    ax.set_ylim(0, 180.0)
 
-    if draw_vectors and not isinstance(veccolor, str):
-        cax_vec = fig.add_axes([0.82, 0.1, 0.03, 0.8])
-        fig.colorbar(plt.cm.ScalarMappable(norm=vec_norm, cmap=plt.cm.get_cmap(vec_cmap)),
-                     cax=cax_vec, label=vec_cmap_label)
+    if not disable_all_colorbars:
+        cax_int = fig.add_axes([0.65, 0.15, 0.02, 0.70])
+        fig.colorbar(plt.cm.ScalarMappable(norm=Normalize(vmin=vmin, vmax=vmax), cmap=cmap),
+                     cax=cax_int, label=cmap_label)
+        if draw_vectors and not isinstance(veccolor, str):
+            cax_vec = fig.add_axes([0.77, 0.15, 0.02, 0.70])
+            fig.colorbar(plt.cm.ScalarMappable(norm=vec_norm, cmap=plt.cm.get_cmap(vec_cmap)),
+                         cax=cax_vec, label=vec_cmap_label)
 
     if savefig != "":
         print(f">> Saving figure to {savefig} ...")

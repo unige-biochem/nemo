@@ -746,6 +746,30 @@ def select_geodesic_defects(
     return selected, rel_dists
 
 
+def old_select_geodesic_defects(order, mesh, idxs_sel, unit, dist_cutoff=50, max_candidates=10):
+    candidate_order = np.argsort(order)[:max_candidates]
+    selected = []
+
+    for i in candidate_order:
+        mesh_idx = idxs_sel[i]
+        if not selected:
+            selected.append(i)
+            continue
+        dists = [old_dijkstra_geodesic_distmesh(mesh, mesh_idx, idxs_sel[j], debug=False) for j in selected]
+        if all(d > dist_cutoff for d in dists):
+            selected.append(i)
+
+    print(f"Found {len(selected)} defects!")
+    print("Relative distances between selected defects:")
+    rel_dists = []
+    for i, j in combinations(selected, 2):
+        d = old_dijkstra_geodesic_distmesh(mesh, idxs_sel[i], idxs_sel[j], debug=False)
+        rel_dists.append([i, j, d])
+        print(f"#{i} <-> #{j} = {d:.2f} {unit}")
+    rel_dists = np.array(rel_dists)
+    return selected, rel_dists
+
+
 ######################
 # PROJECTION MODULES #
 ######################
@@ -1196,44 +1220,36 @@ def curved_nem_charge(mesh, directors, calc_idxs, director_indeces, tan_x, tan_y
         return m_charge, calc_charge_loop_idxs, m_line_charge, m_gauss_contribution
 
 
-def inter_layer_order(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
-                      director_name_prefix="directors-avg_2dcurved_"):
+def inter_layer_alignment(layer_name_1, layer_name_2, patch_label_1, patch_label_2, resdata_dir,
+                          director_name_prefix="directors-avg_2dcurved_"):
     print(f"Loading layer 1 {layer_name_1}...")
     resdata_dir_layer_1 = os.path.join(resdata_dir, layer_name_1)
     directors_2dcurved_avg_1 = load_array(f"{director_name_prefix}{patch_label_1}",
                                           folderpath=resdata_dir_layer_1)
-    tan_x_1 = load_array("tan_x", folderpath=resdata_dir_layer_1)
-    tan_y_1 = load_array("tan_y", folderpath=resdata_dir_layer_1)
-    print(f"Loading layer 2 {layer_name_2}...")
+    tan_x_1 = load_array("tan_x", folderpath=resdata_dir_layer_1)[:, :3]
+    tan_y_1 = load_array("tan_y", folderpath=resdata_dir_layer_1)[:, :3]
 
+    print(f"Loading layer 2 {layer_name_2}...")
     resdata_dir_layer_2 = os.path.join(resdata_dir, layer_name_2)
     directors_2dcurved_avg_2 = load_array(f"{director_name_prefix}{patch_label_2}",
                                           folderpath=resdata_dir_layer_2)
-    tan_x_2 = load_array("tan_x", folderpath=resdata_dir_layer_2)
-    tan_y_2 = load_array("tan_y", folderpath=resdata_dir_layer_2)
-
-    joint_directors_2dcurved_avg = np.concatenate((directors_2dcurved_avg_1, directors_2dcurved_avg_2), axis=0)
-    joint_tan_x = np.concatenate((tan_x_1, tan_x_2), axis=0)
-    joint_tan_y = np.concatenate((tan_y_1, tan_y_2), axis=0)
 
     coords1 = directors_2dcurved_avg_1[:, :3]
     coords2 = directors_2dcurved_avg_2[:, :3]
     neigh_in_set2 = coord_search_neighbours(coords2, custom_probes=coords1, k=1, n_process=8).ravel()
-    N1 = len(coords1)
-    N2 = len(coords2)
-    pair_1 = np.column_stack([
-        np.arange(N1),
-        neigh_in_set2 + N1
-    ])
-    pair_2 = np.column_stack([
-        np.arange(N1, N1 + N2),
-        np.arange(N1, N1 + N2)
-    ])
-    joint_neigh_idxs = np.vstack([pair_1, pair_2])
-    S_2dcurv_interlayer, n_avg_2dcurv_interlayer = avg_tan_nem_tens(t1_cov=joint_tan_x, t2_cov=joint_tan_y,
-                                                                    directors=joint_directors_2dcurved_avg,
-                                                                    neigh_idxs=joint_neigh_idxs)
-    return S_2dcurv_interlayer[:len(directors_2dcurved_avg_1)], directors_2dcurved_avg_1, directors_2dcurved_avg_2
+
+    n1 = directors_2dcurved_avg_1[:, 3:]
+    n2_nearest = directors_2dcurved_avg_2[neigh_in_set2, 3:]
+    n1_x = np.sum(n1 * tan_x_1, axis=1)
+    n1_y = np.sum(n1 * tan_y_1, axis=1)
+    theta_i = np.arctan2(n1_y, n1_x)
+    n2_x = np.sum(n2_nearest * tan_x_1, axis=1)
+    n2_y = np.sum(n2_nearest * tan_y_1, axis=1)
+    theta_j = np.arctan2(n2_y, n2_x)
+
+    alignment_nematic = np.cos(2 * (theta_j - theta_i))
+
+    return alignment_nematic, directors_2dcurved_avg_1, directors_2dcurved_avg_2
 
 
 def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
