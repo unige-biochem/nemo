@@ -10,7 +10,6 @@ import os
 from itertools import combinations
 
 import numpy as np
-import matplotlib.pyplot as plt
 import orientationpy as op
 import pyvista as pv
 import scipy.sparse as sp
@@ -1250,95 +1249,3 @@ def inter_layer_alignment(layer_name_1, layer_name_2, patch_label_1, patch_label
     alignment_nematic = np.cos(2 * (theta_j - theta_i))
 
     return alignment_nematic, directors_2dcurved_avg_1, directors_2dcurved_avg_2
-
-
-def compute_defect_polarisations(mesh, idxs_sel, directors, vertex_normals,
-                                 defect_idxs_calc, m_charge, patch_type, patch_size, pol_figs_path,
-                                 show_profile=False, hidefig=True):
-    pol_positions, pol_vectors, pol_idxs = [], [], []
-    directors_v = directors[:, 3:6]
-    directors_v /= np.linalg.norm(directors_v, axis=1, keepdims=True) + 1e-12
-
-    for d_idx, charge in zip(defect_idxs_calc, m_charge):
-        charge_rounded = np.round(charge * 2) / 2
-        if not (abs(charge_rounded) == 0.5):
-            continue
-
-        core_idx_sel = idxs_sel[d_idx]
-        core_vertex = mesh.vertices[core_idx_sel]
-
-        # --- Neighborhood Retrieval ---
-        if patch_type == "radius":
-            neigh_idxs_sel = coord_search_radius(mesh.vertices[idxs_sel],
-                                                 custom_probes=[core_vertex],
-                                                 r=patch_size)[0]
-        elif patch_type == "nearest":
-            neigh_idxs_sel = coord_search_neighbours(mesh.vertices[idxs_sel],
-                                                     custom_probes=[core_vertex],
-                                                     k=patch_size)[0]
-        else:
-            raise ValueError(f"Unknown patch type: {patch_type}")
-
-        if len(neigh_idxs_sel) < 10:
-            continue
-
-        normal = vertex_normals[core_idx_sel]
-        normal /= np.linalg.norm(normal)
-        t1 = np.cross(normal, [1, 0, 0])
-        if np.linalg.norm(t1) < 1e-6:
-            t1 = np.cross(normal, [0, 1, 0])
-        t1 /= np.linalg.norm(t1)
-        t2 = np.cross(normal, t1)
-        rel_pos = mesh.vertices[idxs_sel[neigh_idxs_sel]] - core_vertex
-        # Spatial angle (phi in Function 2)
-        phi_spatial = np.arctan2(rel_pos @ t2, rel_pos @ t1)
-
-        neigh_dirs = directors_v[neigh_idxs_sel]
-        d_proj_x = neigh_dirs @ t1
-        d_proj_y = neigh_dirs @ t2
-        theta_dir = np.arctan2(d_proj_y, d_proj_x)
-
-        Z = np.mean(np.exp(1j * (2 * theta_dir - 2 * charge_rounded * phi_spatial)))
-        phi_0 = np.angle(Z) / 2
-
-        current_pols_3d = []
-
-        if charge_rounded > 0:  # +1/2 Comet
-            alpha = 2 * phi_0
-            pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
-            current_pols_3d.append(pol)
-        else:  # -1/2 Trefoil
-            for m in range(3):
-                alpha = (2.0 / 3.0) * (phi_0 + m * np.pi)
-                pol = np.cos(alpha) * t1 + np.sin(alpha) * t2
-                current_pols_3d.append(pol)
-        for p in current_pols_3d:
-            pol_positions.append(core_vertex)
-            pol_vectors.append(p)
-            pol_idxs.append(d_idx)
-
-        if show_profile:
-            fig, ax = plt.subplots(figsize=(5, 5))
-            ax.set_aspect('equal')
-            ax.set_title(f"Defect #{d_idx}, m={charge_rounded}")
-
-            x_2d = rel_pos @ t1
-            y_2d = rel_pos @ t2
-            scale = 0.15 * patch_size
-
-            ax.quiver(x_2d, y_2d, d_proj_x * scale, d_proj_y * scale,
-                      color='blue', alpha=0.3, headwidth=0, headlength=0, headaxislength=0)
-
-            for p in current_pols_3d:
-                p2d = [p @ t1, p @ t2]
-                ax.quiver(0, 0, p2d[0] * scale * 3, p2d[1] * scale * 3,
-                          color='red', width=0.01, pivot='tail', angles='xy', scale_units='xy', scale=1)
-
-            ax.scatter(0, 0, color='k', marker='x')
-            plt.savefig(os.path.join(pol_figs_path, f"defect_{d_idx}.png"), bbox_inches='tight', dpi=300)
-            if not hidefig:
-                plt.show()
-            else:
-                plt.close()
-
-    return np.column_stack((np.array(pol_positions), np.array(pol_vectors))), np.array(pol_idxs)
