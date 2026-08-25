@@ -220,3 +220,39 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                header=f"{pol_mode}",
                folderpath=resdata_dir_layer)
     return layer_label, layer_mesh, proj_layer, directors_2dcurved_avg, s_2dcurv, defect_idxs_calc, m_charge, charge_pol_linked_idxs, pol_vecfield
+
+# # ==== 3D render result ====
+# # layer_label = ""
+# # nematic_avg_label = ""
+# resdata_dir_layer = os.path.join(resdata_dir, layer_label)
+# resfig_dir_layer = os.path.join(resfig_dir, layer_label)
+# proj_layer = datahandler.load_array("intensities", folderpath=resdata_dir_layer)
+# layer_mesh = datahandler.load_mesh(os.path.join(resdata_dir_layer, "layer_mesh.ply"))
+# s_2dcurv = datahandler.load_array(name=f"S-order_2dcurved_{nematic_avg_label}",
+#                                   folderpath=resdata_dir_layer)
+# directors_2dcurved_avg = datahandler.load_array(name=f"directors-avg_2dcurved_{nematic_avg_label}",
+#                                                 folderpath=resdata_dir_layer)
+# idxs_sel = datahandler.load_array("calcindeces", folderpath=resdata_dir_layer).astype(int)
+# defect_idxs_calc = datahandler.load_array(name=f"top-charge_2dcurved_idxs",
+#                                           folderpath=resdata_dir_layer).astype(int)
+# m_charge = datahandler.load_array(name=f"top-charge_2dcurved",
+#                                   folderpath=resdata_dir_layer)
+# charge_pol_linked_idxs = datahandler.load_array(name=f"def-pol_2dcurved_idxs_expanded",
+#                                                 folderpath=resdata_dir_layer).astype(int)
+# pol_vecfield = datahandler.load_array(name=f"def-pol_2dcurved",
+#                                       folderpath=resdata_dir_layer)
+# visuals.view_colored_mesh_dir_field(mesh=layer_mesh, directors=directors_2dcurved_avg, mesh_shading="flat",
+#                                     mesh_vert_colors=visuals.color_scalar(proj_layer, normalise=True,
+#                                                                           cmap="Greys_r"),
+#                                     vec_colors=visuals.color_scalar(s_2dcurv, manual_vminmax=[0, 1]),
+#                                     markers=layer_mesh.vertices[idxs_sel[defect_idxs_calc]], vec_edge_width=0.7,
+#                                     marker_colors=visuals.color_scalar(m_charge, manual_vminmax=[-1, 1],
+#                                                                        cmap="rainbow"), marker_size=400,
+#                                     marker_vectors=pol_vecfield if len(pol_vecfield) > 0 else None,
+#                                     marker_vectors_length=50, vec_length=10,
+#                                     marker_vector_width=3,
+#                                     marker_vectors_color=visuals.color_scalar(m_charge[charge_pol_linked_idxs],
+#                                                                               manual_vminmax=[-1, 1],
+#                                                                               cmap="rainbow") if len(
+#                                         charge_pol_linked_idxs) > 0 else None, img=img_raw,
+#                                     scale=img_scale, center_marker_vector=False)
