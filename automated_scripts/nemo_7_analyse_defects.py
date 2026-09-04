@@ -23,7 +23,7 @@ from module_scripts.analysis import (
 from module_scripts.datahandler import create_resdirs, load_array, load_mesh, save_array
 from module_scripts.visuals import (
     plot_dir_field,
-    plot_hist,
+    plot_bar,
     plot_spherical_projection,
     view_colored_mesh_dir_field,
     color_scalar
@@ -100,12 +100,12 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                                                         patch_size=topcharge_size, debug=True,
                                                         correct_orientation=True)
     print(f"Final number of defects: {len(m_charge)} !")
-    plot_dir_field(directors=directors_2dcurved_avg, veclength=0.02, veccolor=s_2dcurv,
-                   marker=np.vstack([layer_mesh.vertices[i] for i in calc_charge_loop_idxs]),
-                   pt_label="Charge Calculation Line",
-                   pt_alpha=1.0, cmap_label="order parameter $S$", manual_vminmax=[0, 1],
-                   savefig=os.path.join(resfig_dir_layer, f"top-charge-loops.png"),
-                   hidefig=hidefig)
+    # plot_dir_field(directors=directors_2dcurved_avg, veclength=0.02, veccolor=s_2dcurv,
+    #                marker=np.vstack([layer_mesh.vertices[i] for i in calc_charge_loop_idxs]),
+    #                pt_label="Charge Calculation Line",
+    #                pt_alpha=1.0, cmap_label="order parameter $S$", manual_vminmax=[0, 1],
+    #                savefig=os.path.join(resfig_dir_layer, f"top-charge-loops.png"),
+    #                hidefig=hidefig)
 
     m_charge_extended = np.full(len(layer_mesh.vertices), 0.0)
     if topcharge_mode == "radius":
@@ -145,14 +145,16 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
                folderpath=resdata_dir_layer)
 
     # ==== Plot result ====
-    plot_hist(m_charge, title=r"$\sum_i m_i =$" + f"{np.nansum(m_charge)}", ylabel="Count", xlim=[-1.1, 1.1],
-              savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.png"), density=False,
-              hidefig=hidefig)
+    bins = np.arange(-1, 2.0, 0.5) - 0.25
+    plot_bar(array=m_charge, bins=bins, figsize=(3.5, 2.5), ylabel="Count",
+             xlabel=r"Defect topological charge $m$", title=fr"$\sum_i m_i = {np.sum(m_charge)}$",
+             savefig=os.path.join(resfig_dir_layer, f"hist_top-charge.png"),
+             hidefig=hidefig)
 
     sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
     vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
                                                            directors_2dcurved_avg[:, 3:])
-    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+    plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys",
                               vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
                               vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
                               vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",

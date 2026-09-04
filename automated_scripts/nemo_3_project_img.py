@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, proj_mode, flip_normals,
          correct_offset_automatic=False, scale_down_mesh=True, min_dist_per_vert=None,
          initial_broad_scan=False, show_figures=True, render=False, initial_broad_scan_min=0.0,
-         initial_broad_scan_max=50.0, plot_half_projections=False):
+         initial_broad_scan_max=50.0, plot_half_projections=False, plot_sph_proj=True):
     print(f">> Attempting to project image {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
@@ -151,10 +151,12 @@ def main(img_path, t_select, c_select, mesh_name, dist_min, dist_max, dist_num, 
     save_array(proj_layer, "intensities", header="I", folderpath=resdata_dir_layer)
 
     try:
-        # ==== Plot projected result ====
-        sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
-        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="inferno",
-                                  savefig=os.path.join(resfig_dir_layer, "spherical_projection.png"), hidefig=hidefig)
+        if plot_sph_proj:
+            # ==== Plot projected result ====
+            sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
+            plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="inferno",
+                                      savefig=os.path.join(resfig_dir_layer, "spherical_projection.png"),
+                                      hidefig=hidefig)
         if plot_half_projections:
             plot_maxproj_pts(verts=layer_mesh.vertices, colors=proj_layer, cmap="inferno", unit=img_unit,
                              savefig=os.path.join(resfig_dir_layer, "maxproj.png"), hidefig=hidefig)

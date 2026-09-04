@@ -92,8 +92,8 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
                         idxs_neigh=np.asarray(idxs_neigh, dtype=object))
 
     # ==== Calculate curved nematic order ====
-    s_2dcurv, n_avg_2dcurv = avg_tan_nem_tens(t1_cov=tan_x, t2_cov=tan_y, directors=directors_2dcurved,
-                                              neigh_idxs=idxs_neigh)
+    s_2dcurv, n_avg_2dcurv, qij_bar = avg_tan_nem_tens(t1_cov=tan_x, t2_cov=tan_y, directors=directors_2dcurved,
+                                                       neigh_idxs=idxs_neigh, return_qij_bar=True)
 
     # ==== Save curved nematic order ====
     save_array(s_2dcurv, name=f"S-order_2dcurved_{nematic_avg_label}", header="S",
@@ -101,6 +101,8 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
     save_array(np.column_stack((veccoords, n_avg_2dcurv)),
                name=f"directors-avg_2dcurved_{nematic_avg_label}",
                header="x,y,z,vx,vy,vz", folderpath=resdata_dir_layer)
+    np.savez_compressed(os.path.join(resdata_dir_layer, f"q_sphi_tensor_{nematic_avg_label}"),
+                        q_sphi_tensor=qij_bar)
 
     # ==== Plot curved nematic order ====
     directors_2dcurved_avg = directors_2dcurved.copy()
@@ -113,13 +115,14 @@ def main(img_path, t_select, c_select, layer_label, avg_mode, avg_size, show_fig
                    veccolor=s_2dcurv, cmap_label="order scalar $S$", title=title_render, manual_vminmax=[0, 1],
                    savefig=savefig_render, show_axes=False, hidefig=hidefig)
     plot_hist(array=s_2dcurv, title=title_hist, savefig=savefig_hist,
-              xlim=[0, 1], hidefig=hidefig)
+              xlim=[0, 1], hidefig=hidefig, ylabel="Probability density", xlabel=r"Nematic order amplitude $S$",
+              figsize=(3.5, 2.5))
     try:
         sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
         vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
                                                                directors_2dcurved_avg[:, 3:])
 
-        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys",
                                   vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
                                   vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
                                   vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",

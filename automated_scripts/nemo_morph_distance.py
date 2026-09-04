@@ -1,6 +1,6 @@
 """
 Batch Analysis Script for NEMO, the Nematics & Morphology Toolkit.
-Purpose: Inter-mesh thickness
+Purpose: Inter-mesh distance
 Author: Konstantinos Andreadis (Roux Lab & Salbreux Lab @UNIGE)
 """
 
@@ -26,12 +26,12 @@ from module_scripts.visuals import (
 import numpy as np
 
 
-def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl_number, interp_k,
-         thickness_crop_range=None, show_figures=True, render=False, plot_maxprojections=False, ):
-    print(f">> Attempting to calculate the thickness between two meshes for {img_path}!")
+def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, distance_sampl_number, interp_k,
+         distance_crop_range=None, show_figures=True, render=False, plot_maxprojections=False, ):
+    print(f">> Attempting to calculate the distance between two meshes for {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
-        return None
+        return Nonedistance
 
     # ==== Choose image ====
     print(f"Selected image path: {img_path}")
@@ -58,27 +58,27 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, thickness_sampl
     print(f"Approximate radius of inner mesh: {mesh_1_radii_avg} and of outer mesh: {mesh_2_radii_avg}")
 
     # ==== Calculate inter-mesh distance ====
-    dist_vals, dist_idxs = inter_dist_mesh(mesh_1=mesh_1, mesh_2=mesh_2, num_sample=thickness_sampl_number,
-                                           crop_range=thickness_crop_range, debug=True,
+    dist_vals, dist_idxs = inter_dist_mesh(mesh_1=mesh_1, mesh_2=mesh_2, num_sample=distance_sampl_number,
+                                           crop_range=distance_crop_range, debug=True,
                                            allow_multiple_hits=False)
     full_dist_vals = interpolate_on_mesh(mesh_1, dist_idxs, dist_vals, k=interp_k)
 
     # ==== Save inter-mesh distance ====
-    save_array(full_dist_vals, f"{mesh_1_name}_VS_{mesh_2_name}_thickness", header=f"dist ({img_unit})",
+    save_array(full_dist_vals, f"{mesh_1_name}_VS_{mesh_2_name}_distance", header=f"dist ({img_unit})",
                folderpath=resdata_dir)
 
     # ==== Plot inter-mesh distance ====
-    plot_hist(array=full_dist_vals, title=f"Thickness AVG = {full_dist_vals.mean():.2e} {img_unit}",
-              xlim=thickness_crop_range,
-              savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_thickness_hist.png"),
+    plot_hist(array=full_dist_vals, title=f"distance AVG = {full_dist_vals.mean():.2e} {img_unit}",
+              xlim=distance_crop_range,
+              savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_distance_hist.png"),
               hidefig=hidefig)
     if plot_maxprojections:
         plot_maxproj_pts(verts=mesh_1.vertices, unit=img_unit, colors=full_dist_vals, cmap="coolwarm",
-                         interp_grid_n=200, cmap_label=f"Thickness ({img_unit})",
-                         savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_thickness.png"),
+                         interp_grid_n=200, cmap_label=f"distance ({img_unit})",
+                         savefig=os.path.join(resfig_dir, f"{mesh_1_name}_VS_{mesh_2_name}_distance.png"),
                          hidefig=hidefig)
-    save_array(np.array([[thickness_sampl_number, interp_k]]),
-               name=f"{mesh_1_name}_VS_{mesh_2_name}_thickness_parameters",
+    save_array(np.array([[distance_sampl_number, interp_k]]),
+               name=f"{mesh_1_name}_VS_{mesh_2_name}_distance_parameters",
                header="numcalc,interpnneigh", folderpath=resdata_dir)
     if render:
         # ==== 3D render result ====

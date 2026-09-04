@@ -57,7 +57,6 @@ NEMO/
 ├── automated_scripts/               # Folder of Automated Analysis Scripts
 ├── environment.yml                  # Required Python libraries compatible with any conda
 ├── MAIN.ipynb                       # Main Pipeline Workspace Notebook
-├── BATCH.ipynb                      # Batch Analysis Notebook
 ├── nematic-on-vesicle.ipynb         # Generation of synthetic test example
 └── README.md                        # This README
 ```  

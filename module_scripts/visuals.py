@@ -282,9 +282,7 @@ def plot_hist(array, ylabel="Frequency", title="", xlabel="", figsize=(3.5, 2.8)
     plt.title(title)
     hist_kwargs = {
         "density": density,
-        "align": "mid",
         "color": "black",
-        "rwidth": 0.92,
     }
     if bins is not None:
         hist_kwargs["bins"] = bins
@@ -293,6 +291,31 @@ def plot_hist(array, ylabel="Frequency", title="", xlabel="", figsize=(3.5, 2.8)
         plt.xlim(xlim[0], xlim[1])
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    if savefig != "":
+        print(f">> Saving figure to {savefig} ...")
+        create_figdir(os.path.dirname(savefig))
+        plt.savefig(savefig, dpi=dpi, bbox_inches="tight")
+    if not hidefig:
+        plt.show()
+    else:
+        plt.close()
+
+
+def plot_bar(array, bins, ylabel="Count", title="", xlabel="", figsize=(3.5, 2.8), savefig="", dpi=300,
+             hidefig=False):
+    plt.figure(figsize=figsize)
+    plt.title(title)
+    bar_kwargs = {
+        "width": 0.3,
+        "color": "black",
+    }
+    counts = np.histogram(array, bins=bins)[0]
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    plt.bar(x=bin_centers, height=counts, **bar_kwargs)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xticks(ticks=bin_centers)
+    plt.yticks(ticks=np.arange(0, counts.max() + 1, 1))
     if savefig != "":
         print(f">> Saving figure to {savefig} ...")
         create_figdir(os.path.dirname(savefig))
@@ -339,16 +362,17 @@ def plot_matrix(matrix, unit, colorbar=False, cmap="twilight", figsize=(3.5, 2.8
 
 def plot_spherical_projection(phi, theta, intensities,
                               hexview=True, ptview=False, interp_grid_n=200,
-                              cmap="Greens", vec_pos_phi=None, vec_pos_theta=None,
+                              cmap="Greys", vec_pos_phi=None, vec_pos_theta=None,
                               vec_dir_phi=None, vec_dir_theta=None, veccolor="red",
                               vec_manual_vminmax=None, vec_cmap="Spectral",
                               scale_factor=10.0, figsize=(8.2, 3.2), arrow_alpha=0.7,
-                              vec_cmap_label="", vec_width=0.001, ptsize=2, alpha=1.0,
+                              vec_cmap_label=r"Nematic order amplitude $S$", vec_width=0.001, ptsize=2, alpha=1.0,
                               invert_y_axis=False,
-                              cmap_label="Intensity Signal (a.u.)", manual_vminmax=None, savefig="", dpi=300,
+                              cmap_label="Projected intensity (a.u.)", manual_vminmax=None, savefig="", dpi=300,
                               hidefig=False, marker_idxs=None, marker_color="yellow",
                               marker_size=200, marker_alpha=0.9, marker_vec=None, marker_vec_scale=20,
-                              marker_vec_width=0.005, marker_vec_color="red", xlabel="Phi (deg)", ylabel="Theta (deg)",
+                              marker_vec_width=0.005, marker_vec_color="red", xlabel=r"Azimuthal angle $\phi$ (deg)",
+                              ylabel=r"Polar angle $\theta$ (deg)",
                               disable_all_colorbars=False, ):
     draw_vectors = all(x is not None for x in [vec_pos_phi, vec_pos_theta, vec_dir_phi, vec_dir_theta])
     vmin, vmax = (intensities.min(), intensities.max()) if manual_vminmax is None else manual_vminmax

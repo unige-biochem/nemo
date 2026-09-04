@@ -65,7 +65,7 @@ def main(img_path, t_select, c_select, layer_name_1, patch_label_1, layer_name_2
                header="strength", folderpath=resdata_dir)
 
     plot_hist(inter_layer_c, xlim=[-1, 1], density=True, xlabel=r"Inter-layer alignment $c$",
-              ylabel="Probability density",
+              ylabel="Probability density", figsize=(3.5, 2.5),
               savefig=os.path.join(resfig_dir,
                                    f"{layer_name_1}_{patch_label_1}_VS_{layer_name_2}_{patch_label_2}_hist_inter_layer_c.png"),
               hidefig=hidefig)

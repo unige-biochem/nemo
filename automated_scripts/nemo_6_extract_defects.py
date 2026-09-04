@@ -80,7 +80,7 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, dist_cuto
         sph_proj_phi, sph_proj_theta = spherical_project(pts=layer_mesh.vertices)
         vec_dir_phi, vec_dir_theta = spherical_project_vectors(directors_2dcurved_avg[:, :3],
                                                                directors_2dcurved_avg[:, 3:])
-        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys_r",
+        plot_spherical_projection(phi=sph_proj_phi, theta=sph_proj_theta, intensities=proj_layer, cmap="Greys",
                                   vec_pos_phi=sph_proj_phi[idxs_sel], vec_pos_theta=sph_proj_theta[idxs_sel],
                                   vec_dir_phi=vec_dir_phi, vec_dir_theta=vec_dir_theta, veccolor=s_2dcurv,
                                   vec_manual_vminmax=[0, 1], vec_cmap_label="order scalar $S$",

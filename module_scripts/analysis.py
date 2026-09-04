@@ -125,42 +125,45 @@ def old_create_tangential_basis(mesh, first_choice_axis=None, second_choice_axis
 
 
 def create_tangential_basis(mesh):
-    print(f">> Creating tangential basis ...")
-    solver = pp3d.MeshVectorHeatSolver(mesh.vertices, mesh.faces)
-    basisX, basisY, basisN = solver.get_tangent_frames()
+    try:
+        print(f">> Creating tangential basis ...")
+        solver = pp3d.MeshVectorHeatSolver(mesh.vertices, mesh.faces)
+        basisX, basisY, basisN = solver.get_tangent_frames()
 
-    source_vertex_idx = 0
-    normal = basisN[source_vertex_idx]
+        source_vertex_idx = 0
+        normal = basisN[source_vertex_idx]
 
-    neighbor_indices = mesh.vertex_neighbors[source_vertex_idx]
-    if len(neighbor_indices) > 0:
-        print(">> Starting vector propagation from edge vector...")
-        edge_vector = mesh.vertices[neighbor_indices[0]] - mesh.vertices[source_vertex_idx]
-        tangent_3d = edge_vector - np.dot(edge_vector, normal) * normal
-    else:
-        tangent_3d = np.array([0.0, 0.0, 0.0])
+        neighbor_indices = mesh.vertex_neighbors[source_vertex_idx]
+        if len(neighbor_indices) > 0:
+            print(">> Starting vector propagation from edge vector...")
+            edge_vector = mesh.vertices[neighbor_indices[0]] - mesh.vertices[source_vertex_idx]
+            tangent_3d = edge_vector - np.dot(edge_vector, normal) * normal
+        else:
+            tangent_3d = np.array([0.0, 0.0, 0.0])
 
-    if np.linalg.norm(tangent_3d) < 1e-8:
-        print(f"[!] No valid primary vector, resorting to random tangent vector...")
-        fallback_vec = np.array([1.0, 0.0, 0.0])
-        if np.abs(np.dot(fallback_vec, normal)) > 0.99:
-            fallback_vec = np.array([0.0, 1.0, 0.0])
-        tangent_3d = fallback_vec - np.dot(fallback_vec, normal) * normal
-    tangent_3d = tangent_3d / np.linalg.norm(tangent_3d)
+        if np.linalg.norm(tangent_3d) < 1e-8:
+            print(f"[!] No valid primary vector, resorting to random tangent vector...")
+            fallback_vec = np.array([1.0, 0.0, 0.0])
+            if np.abs(np.dot(fallback_vec, normal)) > 0.99:
+                fallback_vec = np.array([0.0, 1.0, 0.0])
+            tangent_3d = fallback_vec - np.dot(fallback_vec, normal) * normal
+        tangent_3d = tangent_3d / np.linalg.norm(tangent_3d)
 
-    vec_2d = [np.dot(tangent_3d, basisX[source_vertex_idx]),
-              np.dot(tangent_3d, basisY[source_vertex_idx])]
+        vec_2d = [np.dot(tangent_3d, basisX[source_vertex_idx]),
+                  np.dot(tangent_3d, basisY[source_vertex_idx])]
 
-    transported_2d = solver.transport_tangent_vector(source_vertex_idx, vec_2d)
+        transported_2d = solver.transport_tangent_vector(source_vertex_idx, vec_2d)
 
-    tan_x = (transported_2d[:, 0, np.newaxis] * basisX +
-             transported_2d[:, 1, np.newaxis] * basisY)
-    tan_x = tan_x / np.linalg.norm(tan_x, axis=1, keepdims=True)
-    tan_y = np.cross(basisN, tan_x)
-    tan_y = tan_y / np.linalg.norm(tan_y, axis=1, keepdims=True)
-
-    if np.isnan(tan_x).any() or np.isnan(tan_y).any():
-        print(f"[!] Nans detected in tangent vector propagation, resorting to old algorithm...")
+        tan_x = (transported_2d[:, 0, np.newaxis] * basisX +
+                 transported_2d[:, 1, np.newaxis] * basisY)
+        tan_x = tan_x / np.linalg.norm(tan_x, axis=1, keepdims=True)
+        tan_y = np.cross(basisN, tan_x)
+        tan_y = tan_y / np.linalg.norm(tan_y, axis=1, keepdims=True)
+        if np.isnan(tan_x).any() or np.isnan(tan_y).any():
+            print(f"[!] Nans detected in tangent vector propagation, resorting to old algorithm...")
+            tan_x, tan_y = old_create_tangential_basis(mesh=mesh)
+    except:
+        print(f"[!] Error detected in tangent vector propagation, resorting to old algorithm...")
         tan_x, tan_y = old_create_tangential_basis(mesh=mesh)
     return tan_x, tan_y
 
@@ -1084,7 +1087,8 @@ def avg_tan_nem_tens(t1_cov, t2_cov, directors, neigh_idxs, debug=False, return_
                                    tensprod(q_tilde_avg[i], t_outer[i, 0, 1])],
                                   [tensprod(q_tilde_avg[i], t_outer[i, 1, 0]),
                                    tensprod(q_tilde_avg[i], t_outer[i, 1, 1])]]) for i in range(N)])
-
+    qij_bar = qij_bar - 0.5 * np.trace(qij_bar, axis1=-2, axis2=-1)[..., np.newaxis, np.newaxis] * np.eye(2)
+    print(f"MAX Trace={np.max(np.trace(qij_bar, axis1=-2, axis2=-1))}")
     eigvals, eigvecs = np.linalg.eigh(qij_bar)
     max_indeces = np.argmax(eigvals, axis=1)
     max_eigvals = eigvals[np.arange(len(max_indeces)), max_indeces]
