@@ -78,7 +78,7 @@ python --version
 
 Clone this repository:
 
-- Download the source code from GitHub (https://gitlab.unige.ch/salbreux-group/konstantinos-andreadis/nemo.git)
+- Download the source code from GitHub
 - Or extract the .zip file if sent privately.
 
 Install the required dependencies in the virtual environment:
