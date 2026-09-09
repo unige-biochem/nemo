@@ -1,0 +1,6 @@
+.DS_Store
+automated_scripts/.DS_Store
+automated_scripts/__pycache__/
+module_scripts/.DS_Store
+module_scripts/__pycache__/
+.idea
