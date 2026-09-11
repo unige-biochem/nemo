@@ -1146,7 +1146,7 @@ def find_boundary_indeces(mesh, patch_idxs, tan_x, tan_y, angle_precision=1):
             if angle not in angle_to_idx or distances[j] > distances[angle_to_idx[angle]]:
                 angle_to_idx[angle] = j
         unique_sorted_indices = np.array([patch_idxs[i][angle_to_idx[angle]] for angle in sorted(angle_to_idx.keys())])
-        boundary_indeces.append(unique_sorted_indices[::-1])
+        boundary_indeces.append(unique_sorted_indices)
     return boundary_indeces
 
 
@@ -1171,8 +1171,7 @@ def top_charge_loop_integral(loop_idxs, directors, director_indeces, normals, co
 
         dot = np.einsum('ij,ij->i', pdiff, normal_sel)
         pdiff_proj = pdiff - dot[:, None] * normal_sel
-
-        cross = np.cross(pdiff_proj, p_current)
+        cross = np.cross(p_current, pdiff_proj)
         winding_contrib = np.einsum('ij,ij->i', cross, normal_sel)
 
         m = np.sum(winding_contrib) / (2 * np.pi)
