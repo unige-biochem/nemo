@@ -31,7 +31,7 @@ def main(img_path, t_select, c_select, mesh_1_name, mesh_2_name, distance_sampl_
     print(f">> Attempting to calculate the distance between two meshes for {img_path}!")
     if not os.path.exists(img_path):
         print(f">> Image {img_path} does not exist!")
-        return Nonedistance
+        return None
 
     # ==== Choose image ====
     print(f"Selected image path: {img_path}")

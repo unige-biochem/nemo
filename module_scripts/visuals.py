@@ -797,8 +797,8 @@ def view_colored_mesh_dir_field(mesh, directors, vec_colors="red", vec_length=20
                 [tuple(int(hex_code.lstrip('#')[i:i + 2], 16) / 255 for i in (0, 2, 4)) for hex_code in
                  mesh_vert_colors])
     if mesh_color_override is not None:
-        vert_colors = color_override.copy()
-        vert_colors[:, 3] = 1.0
+        mesh_vert_colors = mesh_color_override.copy()
+        mesh_vert_colors[:, 3] = 1.0
 
     if vec_edge_width is None:
         vec_edge_width = vec_length / 8

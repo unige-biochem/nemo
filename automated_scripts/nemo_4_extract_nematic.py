@@ -69,7 +69,7 @@ def main(img_path, t_select, c_select, layer_label, patch_mode, patch_size, norm
                                       threshold=normal_validity_thresh)
 
     # ==== Compute only points at an interval ====
-    idxs_sel = np.random.choice(idxs_sel, size=int(compute_num))
+    idxs_sel = np.random.choice(idxs_sel, size=min(int(compute_num), len(idxs_sel)), replace=False)
     if len(idxs_sel) == 0:
         print("!! ERROR: No vertices were selected for analysis !!")
         return None

@@ -69,16 +69,11 @@ def main(img_path, t_select, c_select, num_samples, radius, mesh_name, interp_k,
         print(f"[!] Unknown patch type: {curvature_patch_info[0]}")
         return None
 
-    # ==== [Optional] Exclude boundary vertices ====
-    curvature_filter_boundary = False
-    curvature_filter_boundary_factor = 0.0
-
     # ==== Calculate Gauss & mean curvature ====
     curvature_results = curvature_by_srf_fit(mesh_curv, num_sample=num_samples, patch_size=curvature_patch_info[1],
                                              patch_mode=curvature_patch_info[0],
-                                             filter_boundary=curvature_filter_boundary, debug=True,
+                                             debug=True,
                                              gauss_crop_range=gauss_crop_range, mean_crop_range=mean_crop_range,
-                                             boundary_excl_factor=curvature_filter_boundary_factor,
                                              custom_basis=custom_basis)
 
     c_gauss, c_mean, c_gauss_idxs, c_mean_idxs, c_tensors, c_tensors_mixed, tensor_idxs = curvature_results

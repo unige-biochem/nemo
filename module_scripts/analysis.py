@@ -181,31 +181,6 @@ def rescale_val_xyz(val, scale, debug=False):
         return val, val * zscale / xyscale, val * zscale / xyscale
 
 
-def filter_valid_patches(verts, idxs_neigh, factor=0.1):
-    if isinstance(idxs_neigh, list):
-        valid_patches = []
-        valid_idxs = []
-        for i, neigh in enumerate(idxs_neigh):
-            if len(neigh) == 0:
-                continue
-            verts_patch = verts[neigh]
-            centroid = np.mean(verts_patch, axis=0, keepdims=True)
-            reldists = np.linalg.norm(verts_patch - centroid, axis=1)
-            if reldists[0] < factor * np.max(reldists):
-                valid_patches.append(neigh)
-                valid_idxs.append(i)
-        print(f"{len(valid_patches)} valid, {len(idxs_neigh) - len(valid_patches)} invalid patches")
-        return valid_patches, np.array(valid_idxs)
-    centroids_patches = np.mean(verts[idxs_neigh], axis=1)[:, np.newaxis]
-    reldists = np.linalg.norm(verts[idxs_neigh] - centroids_patches, axis=2)
-    center_reldist = reldists[:, 0]
-    keep_mask = center_reldist < factor * np.max(reldists, axis=1)
-    valid_patch_idxs = idxs_neigh[keep_mask]
-    valid_idxs = np.argwhere(keep_mask)[:, 0]
-    print(f"{len(valid_patch_idxs)} valid, {len(centroids_patches) - len(valid_patch_idxs)} invalid ! ")
-    return valid_patch_idxs, valid_idxs
-
-
 def filter_normal_validity(mesh, idxs_sel, k=10, threshold=0.2):
     normals_all = mesh.vertex_normals
     normals = normals_all[idxs_sel]
@@ -542,11 +517,12 @@ def fit_sphere(points):
 #########################
 # MESH ANALYSIS MODULES #
 #########################
-def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", filter_boundary=False, debug=False,
-                         gauss_crop_range=None, mean_crop_range=None, boundary_excl_factor=0.1,
+def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", debug=False,
+                         gauss_crop_range=None, mean_crop_range=None,
                          use_original_vertices=False, custom_basis=None):
     print(f">> Calculating curvature for {num_sample}/{len(mesh.vertices)} vertices of mesh...")
-    random_idxs = np.random.choice(np.arange(mesh.vertices.shape[0]), size=num_sample)
+    random_idxs = np.random.choice(mesh.vertices.shape[0], size=min(num_sample, mesh.vertices.shape[0]),
+                                   replace=False)
     if use_original_vertices:
         random_idxs = np.arange(mesh.vertices.shape[0])
     verts = mesh.vertices[random_idxs]
@@ -564,16 +540,13 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
         print(f"[!] Unknown patch type: {patch_mode}")
         return None
 
-    if filter_boundary:
-        neigh_idxs, valid_idxs = filter_valid_patches(verts=verts, idxs_neigh=neigh_idxs, factor=boundary_excl_factor)
-        N = len(neigh_idxs)
-        random_idxs = random_idxs[valid_idxs]
     if custom_basis is not None:
         print("[!] Using custom basis for curvature...")
         tan_x_cov, tan_y_cov = custom_basis[0][random_idxs], custom_basis[1][random_idxs]
     else:
         print("[!] Using smooth tangential basis for curvature...")
-        tan_x_cov, tan_y_cov = create_tangential_basis(mesh=mesh)
+        tan_x_all, tan_y_all = create_tangential_basis(mesh=mesh)
+        tan_x_cov, tan_y_cov = tan_x_all[random_idxs], tan_y_all[random_idxs]
     g = np.array([gmetric(tan_x_cov[i], tan_y_cov[i]) for i in range(N)])
     g_inv = np.array([np.linalg.inv(g[i]) for i in range(N)])
     inter_calc = np.array(
@@ -649,7 +622,8 @@ def curvature_by_srf_fit(mesh, num_sample, patch_size=20, patch_mode="nearest", 
 def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None, allow_multiple_hits=False):
     print(
         f">> Calculating distance between two meshes ({mesh_1.vertices.shape[0]}, {mesh_2.vertices.shape[0]}) using {num_sample} samples...")
-    random_idxs = np.random.choice(np.arange(mesh_1.vertices.shape[0]), size=num_sample)
+    random_idxs = np.random.choice(mesh_1.vertices.shape[0], size=min(num_sample, mesh_1.vertices.shape[0]),
+                                   replace=False)
     vertices_1, normals_1 = mesh_1.vertices[random_idxs], mesh_1.vertex_normals[random_idxs]
     locations, index_ray, index_tri = mesh_2.ray.intersects_location(vertices_1, normals_1,
                                                                      multiple_hits=allow_multiple_hits)
@@ -675,6 +649,8 @@ def inter_dist_mesh(mesh_1, mesh_2, num_sample, debug=False, crop_range=None, al
 
 
 def interpolate_on_mesh(mesh, value_idxs, values, k=10, eps=1e-8):
+    valid = ~np.isnan(values)
+    value_idxs, values = np.asarray(value_idxs)[valid], np.asarray(values)[valid]
     print(f">> Interpolating {len(values)} values on mesh of {len(mesh.vertices)} vertices with k = {k}...")
     known_pts = mesh.vertices[value_idxs]
     all_pts = mesh.vertices
@@ -788,7 +764,7 @@ def proj2mesh(img, mesh, scale, unit, min_dist, max_dist, num_dist, mode, min_di
     if min_dist_per_vert is None:
         min_dist_per_vert = np.full(len(verts), min_dist)
     else:
-        min_dist_per_vert += min_dist
+        min_dist_per_vert = np.asarray(min_dist_per_vert, dtype=float) + min_dist
     distances = np.linspace(0, max_dist - min_dist, num_dist)
     distances_reshaped = distances.reshape(1, num_dist, 1)
     img_grid = (

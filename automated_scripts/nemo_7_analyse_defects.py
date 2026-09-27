@@ -67,8 +67,8 @@ def main(img_path, t_select, c_select, layer_label, nematic_avg_label, topcharge
 
     # ==== Calculate Gaussian curvature for topological charge computation ====
     curv_charge_quick = curvature_by_srf_fit(mesh=layer_mesh, num_sample=3000, patch_size=topcurv_radius,
-                                             patch_mode="radius", filter_boundary=False, debug=True,
-                                             gauss_crop_range=None, boundary_excl_factor=0.0)
+                                             patch_mode="radius", debug=True,
+                                             gauss_crop_range=None)
     # Results given as curv_charge_quick = C_gauss, C_mean, Gauss_idxs, mean_idxs, C_tensors, C_tensors_mixed, tensor_idxs
     gauss_curv_smooth = interpolate_on_mesh(mesh=layer_mesh, value_idxs=curv_charge_quick[2],
                                             values=curv_charge_quick[0], k=topcurv_interpk)
